@@ -316,12 +316,10 @@
         generateDefaultSchedule() {
             const schedule = [];
             for (let week = 1; week <= 15; week++) {
-                if (week <= 14) {
-                    schedule.push({ 
-                        week, day: 'Tue', type: 'Cup', attitude: 'NORMAL', 
-                        venue: 'AWAY', tactic: 'NORMAL', isActive: true 
-                    });
-                }
+                schedule.push({ 
+                    week, day: 'Tue', type: 'Cup', attitude: 'NORMAL', 
+                    venue: 'AWAY', tactic: 'NORMAL', isActive: true 
+                });
                 schedule.push({ 
                     week, day: 'Sat', type: week === 15 ? 'Qualifier' : 'League', 
                     attitude: 'NORMAL', venue: week % 2 === 0 ? 'HOME' : 'AWAY', 
@@ -423,6 +421,7 @@
         
         ensureNewPropertiesExist() {
             if (!this.settings.tsCalculationMethod) this.settings.tsCalculationMethod = 'piecewise';
+            
             this.schedule.forEach(match => {
                 if (!match.venue) match.venue = 'AWAY';
                 if (!match.tactic) match.tactic = 'NORMAL';
