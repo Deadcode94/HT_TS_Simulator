@@ -1,0 +1,417 @@
+// --- MATHEMATICAL LOGIC ---
+class TeamSpiritSimulator {
+    constructor(coachLeadership, psychologistLevel = 0, isNationalTeam = false, calculationMethod = 'piecewise') {
+        this.coachLeadership = coachLeadership;
+        this.psychologistLevel = psychologistLevel;
+        this.isNationalTeam = isNationalTeam;
+        this.calculationMethod = calculationMethod;
+        
+        // Base TS effect on Midfield (Equivalent to NORMAL attitude)
+        this.baseTsModifiers = {
+            10: 1.42, 9: 1.35, 8: 1.28, 7: 1.21, 6: 1.14, 
+            5: 1.07, 4: 1.00, 3: 0.93, 2: 0.86, 1: 0.72
+        };
+
+        // Exact engine multipliers
+        this.multipliers = {
+            attitude: { PIC: 0.83945, NORMAL: 1.0, MOTS: 1.1149 },
+            venue: { HOME: 1.19892, AWAY: 1.0, DERBY_AWAY: 1.11493 },
+            tactic: { NORMAL: 1.0, CA: 0.93 }
+        };
+    }
+
+    getTargetSpirit() {
+        let target = 4.5 + (this.psychologistLevel / 10.0);
+        if (this.isNationalTeam) target += 0.5;
+        return target;
+    }
+
+    applyMatchEffect(preMatchTS, attitude) {
+        let postMatchTS = preMatchTS;
+        if (attitude === 'PIC') postMatchTS = preMatchTS * (1.0 + (1.0 / 3.0));
+        else if (attitude === 'MOTS') postMatchTS = preMatchTS / 2.0;
+        return Math.min(10.0, Math.max(0.0, postMatchTS));
+    }
+
+    applyDailyUpdate(currentTS) {
+        if (this.calculationMethod === 'asymptotic') {
+            return this.applyDailyUpdateAsymptotic(currentTS);
+        } else {
+            return this.applyDailyUpdatePiecewise(currentTS);
+        }
+    }
+
+    // Old Hattrick Organizer Method
+    applyDailyUpdateAsymptotic(currentTS) {
+        const target = this.getTargetSpirit();
+        let newTS = currentTS;
+        if (currentTS >= target) {
+            newTS *= 1.0 - (((currentTS - target) / (this.coachLeadership / 3.0)) / 100.0);
+        } else {
+            newTS *= 1.0 + (((target - currentTS) * (this.coachLeadership / 2.0)) / 100.0);
+        }
+        return newTS;
+    }
+
+    // New Piecewise Linear Decay (Lokes Table)
+    applyDailyUpdatePiecewise(currentTS) {
+        const target = this.getTargetSpirit();
+        if (Math.abs(currentTS - target) < 0.001) return target;
+
+        if (currentTS > target) {
+            // Determine the integer bucket boundary (e.g., 9.00 -> bucket 8, 9.01 -> bucket 9)
+            let bucket = Math.ceil(currentTS - 0.0001) - 1;
+            if (bucket >= 9) bucket = 9;
+            if (bucket < 1) bucket = 1;
+            
+            const dropRates = {
+                7: { 9: 1/3, 8: 1/5, 7: 1/7, 6: 1/13, 5: 1/20, 4: 1/30, 3: 1/40, 2: 1/50, 1: 1/60 },
+                6: { 9: 1/3, 8: 1/5, 7: 1/7, 6: 1/13, 5: 1/20, 4: 1/30, 3: 1/40, 2: 1/50, 1: 1/60 },
+                5: { 9: 1/2, 8: 1/4, 7: 1/5, 6: 1/9,  5: 1/14, 4: 1/20, 3: 1/30, 2: 1/40, 1: 1/50 },
+                4: { 9: 1/1, 8: 1/3, 7: 1/4, 6: 1/6,  5: 1/9,  4: 1/14, 3: 1/20, 2: 1/30, 1: 1/40 },
+                3: { 9: 1/1, 8: 1/2, 7: 1/3, 6: 1/4,  5: 1/6,  4: 1/9,  3: 1/14, 2: 1/20, 1: 1/30 },
+                2: { 9: 2/1, 8: 1/1, 7: 1/1, 6: 1/2,  5: 1/3,  4: 1/6,  3: 1/9,  2: 1/14, 1: 1/20 },
+                1: { 9: 2/1, 8: 1/1, 7: 1/1, 6: 1/2,  5: 1/3,  4: 1/6,  3: 1/9,  2: 1/14, 1: 1/20 }
+            };
+            
+            let drop = dropRates[this.coachLeadership]?.[bucket] || 0.1;
+            return Math.max(target, currentTS - drop);
+        } else {
+            // Rising TS (when currentTS < target) 
+            // Since the Lokes table doesn't map rises, we safely use the old asymptotic rise formula
+            let newTS = currentTS * (1.0 + (((target - currentTS) * (this.coachLeadership / 2.0)) / 100.0));
+            return Math.min(target, newTS);
+        }
+    }
+
+    calculateMidfieldRating(baseRating, currentTS, attitude, venue, tactic) {
+        const ts = Math.min(10.0, Math.max(1.0, currentTS));
+        const lowerBound = Math.floor(ts);
+        const upperBound = Math.ceil(ts);
+        const lowerMod = this.baseTsModifiers[lowerBound];
+        
+        let interpolatedTsMod = lowerMod;
+        if (lowerBound !== upperBound) {
+            const upperMod = this.baseTsModifiers[upperBound];
+            const decimalPart = ts - lowerBound;
+            interpolatedTsMod = lowerMod + ((upperMod - lowerMod) * decimalPart);
+        }
+        
+        let rating = baseRating * interpolatedTsMod;
+        rating *= this.multipliers.attitude[attitude];
+        rating *= this.multipliers.venue[venue];
+        rating *= this.multipliers.tactic[tactic];
+        
+        return rating;
+    }
+}
+
+// --- SEASON CONTROLLER ---
+class SeasonController {
+    constructor(simulator) {
+        this.simulator = simulator;
+        this.updatesBetweenSatAndTue = 3; 
+        this.updatesBetweenTueAndSat = 4;
+    }
+
+    generateDefaultSchedule() {
+        const schedule = [];
+        for (let week = 1; week <= 15; week++) {
+            schedule.push({ 
+                week, day: 'Tue', type: 'Cup', attitude: 'NORMAL', 
+                venue: 'AWAY', tactic: 'NORMAL', isActive: true 
+            });
+            schedule.push({ 
+                week, day: 'Sat', type: week === 15 ? 'Qualifier' : 'League', 
+                attitude: 'NORMAL', venue: week % 2 === 0 ? 'HOME' : 'AWAY', 
+                tactic: 'NORMAL', isActive: true 
+            });
+        }
+        return schedule;
+    }
+
+    simulateSeason(initialTS, baseMidfieldRating, scheduleConfig) {
+        let currentTS = initialTS;
+        const results = [];
+        let isCupActive = true;
+
+        for (let i = 0; i < this.updatesBetweenSatAndTue; i++) {
+            currentTS = this.simulator.applyDailyUpdate(currentTS);
+        }
+
+        for (let i = 0; i < scheduleConfig.length; i++) {
+            const match = scheduleConfig[i];
+            const updatesToNext = match.day === 'Tue' ? this.updatesBetweenTueAndSat : this.updatesBetweenSatAndTue;
+            
+            let effectivelyActive = match.isActive;
+            let cupEliminatedBefore = false;
+
+            if (match.type === 'Cup') {
+                if (!isCupActive) {
+                    effectivelyActive = false;
+                    cupEliminatedBefore = true;
+                }
+                if (!match.isActive) {
+                    isCupActive = false;
+                }
+            } else if (match.type === 'League') {
+                effectivelyActive = true;
+            }
+
+            const preMatchTS = currentTS;
+            const effectiveAttitude = effectivelyActive ? match.attitude : 'NORMAL';
+
+            const midfieldRating = this.simulator.calculateMidfieldRating(
+                baseMidfieldRating, preMatchTS, effectiveAttitude, match.venue, match.tactic
+            );
+            currentTS = this.simulator.applyMatchEffect(preMatchTS, effectiveAttitude);
+            const postMatchTS = currentTS;
+
+            results.push({
+                ...match,
+                effectivelyActive,
+                cupEliminatedBefore,
+                preMatchTS: parseFloat(preMatchTS.toFixed(2)),
+                midfieldRating: parseFloat(midfieldRating.toFixed(2)),
+                postMatchTS: parseFloat(postMatchTS.toFixed(2))
+            });
+
+            for (let u = 0; u < updatesToNext; u++) {
+                currentTS = this.simulator.applyDailyUpdate(currentTS);
+            }
+        }
+        return results;
+    }
+}
+
+// --- STORAGE & APP STATE ---
+class StorageManager {
+    constructor() { this.storageKey = 'ht_ts_season_simulator_data'; }
+    saveData(settings, schedule) { localStorage.setItem(this.storageKey, JSON.stringify({ settings, schedule })); }
+    loadData() { return JSON.parse(localStorage.getItem(this.storageKey)); }
+    clearData() { localStorage.removeItem(this.storageKey); }
+}
+
+class SeasonApp {
+    constructor() {
+        this.storage = new StorageManager();
+        this.defaultSettings = {
+            coachLeadership: 6,
+            psychologistLevel: 0,
+            isNationalTeam: false,
+            tsCalculationMethod: 'piecewise',
+            baseMidfieldRating: 10.0,
+            initialTS: 4.5
+        };
+        this.settings = { ...this.defaultSettings };
+        this.schedule = [];
+        this.init();
+    }
+
+    init() {
+        const saved = this.storage.loadData();
+        if (saved && saved.settings && saved.schedule) {
+            this.settings = saved.settings;
+            this.schedule = saved.schedule;
+            this.ensureNewPropertiesExist();
+        } else {
+            this.instantiateController();
+            this.schedule = this.controller.generateDefaultSchedule();
+        }
+    }
+    
+    ensureNewPropertiesExist() {
+        if (!this.settings.tsCalculationMethod) this.settings.tsCalculationMethod = 'piecewise';
+        
+        this.schedule.forEach(match => {
+            if (!match.venue) match.venue = 'AWAY';
+            if (!match.tactic) match.tactic = 'NORMAL';
+        });
+    }
+
+    instantiateController() {
+        const sim = new TeamSpiritSimulator(
+            Number(this.settings.coachLeadership), 
+            Number(this.settings.psychologistLevel), 
+            this.settings.isNationalTeam,
+            this.settings.tsCalculationMethod
+        );
+        this.controller = new SeasonController(sim);
+    }
+
+    resetState() {
+        this.storage.clearData();
+        this.settings = { ...this.defaultSettings };
+        this.instantiateController();
+        this.schedule = this.controller.generateDefaultSchedule();
+    }
+
+    updateSetting(key, value) {
+        this.settings[key] = value;
+        this.storage.saveData(this.settings, this.schedule);
+    }
+
+    updateMatch(index, field, value) {
+        this.schedule[index][field] = value;
+        this.storage.saveData(this.settings, this.schedule);
+    }
+
+    runSimulation() {
+        this.instantiateController();
+        const startingTS = this.settings.isNationalTeam ? 5.0 : 4.5;
+        return this.controller.simulateSeason(
+            startingTS, 
+            Number(this.settings.baseMidfieldRating), 
+            this.schedule
+        );
+    }
+}
+
+// --- DOM BINDING & UI RENDERING ---
+const app = new SeasonApp();
+
+const domEls = {
+    coach: document.getElementById('coachLeadership'),
+    psychologist: document.getElementById('psychologistLevel'),
+    midfield: document.getElementById('baseMidfieldRating'),
+    national: document.getElementById('isNationalTeam'),
+    algorithm: document.getElementById('tsCalculationMethod'),
+    reset: document.getElementById('btnReset'),
+    tbody: document.getElementById('scheduleTableBody')
+};
+
+function renderUI() {
+    domEls.coach.value = app.settings.coachLeadership;
+    domEls.psychologist.value = app.settings.psychologistLevel;
+    domEls.midfield.value = app.settings.baseMidfieldRating;
+    domEls.national.checked = app.settings.isNationalTeam;
+    domEls.algorithm.value = app.settings.tsCalculationMethod;
+
+    const results = app.runSimulation();
+    domEls.tbody.innerHTML = '';
+    
+    let currentWeek = null;
+
+    results.forEach((match, idx) => {
+        const tr = document.createElement('tr');
+        if (!match.effectivelyActive) tr.classList.add('inactive-row');
+        
+        if (currentWeek !== null && match.week !== currentWeek) {
+            tr.classList.add('new-week-row');
+        }
+        currentWeek = match.week;
+
+        let playedCheck = '';
+        if (match.type === 'Cup') {
+            const checkedAttr = match.effectivelyActive ? 'checked' : '';
+            const disabledAttr = match.cupEliminatedBefore ? 'disabled' : '';
+            playedCheck = `<input type="checkbox" class="toggle-active" data-idx="${idx}" ${checkedAttr} ${disabledAttr}>`;
+        } else if (match.type === 'Qualifier') {
+            playedCheck = `<input type="checkbox" class="toggle-active" data-idx="${idx}" ${match.isActive ? 'checked' : ''}>`;
+        }
+
+        const venueSelect = `
+            <select class="select-control match-venue" data-idx="${idx}">
+                <option value="HOME" ${match.venue === 'HOME' ? 'selected' : ''}>Home</option>
+                <option value="AWAY" ${match.venue === 'AWAY' ? 'selected' : ''}>Away</option>
+                <option value="DERBY_AWAY" ${match.venue === 'DERBY_AWAY' ? 'selected' : ''}>Derby (Away)</option>
+            </select>
+        `;
+        
+        const tacticSelect = `
+            <select class="select-control match-tactic" data-idx="${idx}">
+                <option value="NORMAL" ${match.tactic === 'NORMAL' ? 'selected' : ''}>Normal</option>
+                <option value="CA" ${match.tactic === 'CA' ? 'selected' : ''}>Counter-Attack</option>
+            </select>
+        `;
+
+        const displayAttitude = match.effectivelyActive ? match.attitude : 'NORMAL';
+        const attitudeDisabled = !match.effectivelyActive ? 'disabled' : '';
+
+        const attitudeSelect = `
+            <select class="select-control attitude-${displayAttitude} match-attitude" data-idx="${idx}" ${attitudeDisabled}>
+                <option value="PIC" ${displayAttitude === 'PIC' ? 'selected' : ''}>PIC</option>
+                <option value="NORMAL" ${displayAttitude === 'NORMAL' ? 'selected' : ''}>NORMAL</option>
+                <option value="MOTS" ${displayAttitude === 'MOTS' ? 'selected' : ''}>MOTS</option>
+            </select>
+        `;
+
+        tr.innerHTML = `
+            <td>${match.week}</td>
+            <td>${match.day}</td>
+            <td>${match.type}</td>
+            <td>${playedCheck}</td>
+            <td>${venueSelect}</td>
+            <td>${tacticSelect}</td>
+            <td>${attitudeSelect}</td>
+            <td>${match.preMatchTS}</td>
+            <td><strong>${match.midfieldRating}</strong></td>
+            <td>${match.postMatchTS}</td>
+        `;
+        domEls.tbody.appendChild(tr);
+    });
+
+    attachTableListeners();
+}
+
+function attachTableListeners() {
+    document.querySelectorAll('.toggle-active').forEach(chk => {
+        chk.addEventListener('change', (e) => {
+            app.updateMatch(e.target.dataset.idx, 'isActive', e.target.checked);
+            renderUI();
+        });
+    });
+
+    document.querySelectorAll('.match-venue').forEach(sel => {
+        sel.addEventListener('change', (e) => {
+            app.updateMatch(e.target.dataset.idx, 'venue', e.target.value);
+            renderUI();
+        });
+    });
+    
+    document.querySelectorAll('.match-tactic').forEach(sel => {
+        sel.addEventListener('change', (e) => {
+            app.updateMatch(e.target.dataset.idx, 'tactic', e.target.value);
+            renderUI();
+        });
+    });
+
+    document.querySelectorAll('.match-attitude').forEach(sel => {
+        sel.addEventListener('change', (e) => {
+            app.updateMatch(e.target.dataset.idx, 'attitude', e.target.value);
+            renderUI();
+        });
+    });
+}
+
+domEls.coach.addEventListener('change', (e) => { app.updateSetting('coachLeadership', e.target.value); renderUI(); });
+domEls.psychologist.addEventListener('change', (e) => { app.updateSetting('psychologistLevel', e.target.value); renderUI(); });
+domEls.midfield.addEventListener('change', (e) => { app.updateSetting('baseMidfieldRating', e.target.value); renderUI(); });
+domEls.national.addEventListener('change', (e) => { app.updateSetting('isNationalTeam', e.target.checked); renderUI(); });
+domEls.algorithm.addEventListener('change', (e) => { app.updateSetting('tsCalculationMethod', e.target.value); renderUI(); });
+
+domEls.reset.addEventListener('click', () => {
+    if(confirm("Are you sure you want to reset all data?")) {
+        app.resetState();
+        renderUI();
+    }
+});
+
+renderUI();
+
+// --- THEME TOGGLE ---
+const btnThemeToggle = document.getElementById('btnThemeToggle');
+const savedTheme = localStorage.getItem('ht_ts_theme') || 'light';
+if (savedTheme === 'dark') {
+    document.body.classList.add('dark-mode');
+    btnThemeToggle.textContent = '☀️ Light Mode';
+} else {
+    btnThemeToggle.textContent = '🌙 Dark Mode';
+}
+
+btnThemeToggle.addEventListener('click', () => {
+    document.body.classList.toggle('dark-mode');
+    const isDark = document.body.classList.contains('dark-mode');
+    localStorage.setItem('ht_ts_theme', isDark ? 'dark' : 'light');
+    btnThemeToggle.textContent = isDark ? '☀️ Light Mode' : '🌙 Dark Mode';
+});
