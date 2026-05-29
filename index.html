@@ -19,7 +19,7 @@
             padding: 20px;
         }
         .container {
-            max-width: 1000px;
+            max-width: 1200px;
             margin: 0 auto;
         }
         h1 {
@@ -32,6 +32,7 @@
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             margin-bottom: 20px;
+            overflow-x: auto;
         }
         .settings-grid {
             display: grid;
@@ -76,10 +77,11 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 10px;
+            font-size: 0.9em;
         }
         th, td {
             border: 1px solid var(--border-color);
-            padding: 10px;
+            padding: 8px;
             text-align: center;
         }
         th {
@@ -88,10 +90,11 @@
         }
         tr:nth-child(even) { background-color: #f9f9f9; }
         
-        .attitude-select {
+        .select-control {
             padding: 5px;
             border-radius: 4px;
             font-weight: bold;
+            width: 100%;
         }
         .attitude-PIC { background-color: #d4edda; color: #155724; }
         .attitude-NORMAL { background-color: #e2e3e5; color: #383d41; }
@@ -111,8 +114,8 @@
     <div class="panel">
         <div class="settings-grid">
             <div class="form-group">
-                <label for="coachLeadership">Coach Leadership (1-9)</label>
-                <input type="number" id="coachLeadership" min="1" max="9" value="6">
+                <label for="coachLeadership">Coach Leadership (1-7)</label>
+                <input type="number" id="coachLeadership" min="1" max="7" value="6">
             </div>
             <div class="form-group">
                 <label for="psychologistLevel">Psychologist Level (0-5)</label>
@@ -136,13 +139,15 @@
         <table>
             <thead>
                 <tr>
-                    <th>Week</th>
+                    <th>Wk</th>
                     <th>Day</th>
-                    <th>Match Type</th>
-                    <th>Played?</th>
+                    <th>Type</th>
+                    <th>Played</th>
+                    <th>Venue</th>
+                    <th>Tactic</th>
                     <th>Attitude</th>
                     <th>Pre-Match TS</th>
-                    <th>Midfield Rating</th>
+                    <th>Midfield</th>
                     <th>Post-Match TS</th>
                 </tr>
             </thead>
@@ -160,17 +165,17 @@
             this.psychologistLevel = psychologistLevel;
             this.isNationalTeam = isNationalTeam;
             
-            this.midfieldModifiers = {
-                10: { PIC: 1.22, NORMAL: 1.42, MOTS: 1.62 },
-                9:  { PIC: 1.16, NORMAL: 1.35, MOTS: 1.54 },
-                8:  { PIC: 1.10, NORMAL: 1.28, MOTS: 1.46 },
-                7:  { PIC: 1.04, NORMAL: 1.21, MOTS: 1.38 },
-                6:  { PIC: 0.98, NORMAL: 1.14, MOTS: 1.30 },
-                5:  { PIC: 0.92, NORMAL: 1.07, MOTS: 1.22 },
-                4:  { PIC: 0.87, NORMAL: 1.00, MOTS: 1.13 },
-                3:  { PIC: 0.81, NORMAL: 0.93, MOTS: 1.05 },
-                2:  { PIC: 0.75, NORMAL: 0.86, MOTS: 0.97 },
-                1:  { PIC: 0.63, NORMAL: 0.72, MOTS: 0.81 }
+            // Base TS effect on Midfield (Equivalent to NORMAL attitude)
+            this.baseTsModifiers = {
+                10: 1.42, 9: 1.35, 8: 1.28, 7: 1.21, 6: 1.14, 
+                5: 1.07, 4: 1.00, 3: 0.93, 2: 0.86, 1: 0.72
+            };
+
+            // Exact engine multipliers
+            this.multipliers = {
+                attitude: { PIC: 0.83945, NORMAL: 1.0, MOTS: 1.1149 },
+                venue: { HOME: 1.19892, AWAY: 1.0, DERBY_AWAY: 1.11493 },
+                tactic: { NORMAL: 1.0, CA: 0.93 }
             };
         }
 
@@ -198,19 +203,26 @@
             return newTS;
         }
 
-        calculateMidfieldRating(baseRating, currentTS, attitude) {
+        calculateMidfieldRating(baseRating, currentTS, attitude, venue, tactic) {
             const ts = Math.min(10.0, Math.max(1.0, currentTS));
             const lowerBound = Math.floor(ts);
             const upperBound = Math.ceil(ts);
-            const lowerMod = this.midfieldModifiers[lowerBound][attitude];
+            const lowerMod = this.baseTsModifiers[lowerBound];
             
-            if (lowerBound === upperBound) return baseRating * lowerMod;
+            let interpolatedTsMod = lowerMod;
+            if (lowerBound !== upperBound) {
+                const upperMod = this.baseTsModifiers[upperBound];
+                const decimalPart = ts - lowerBound;
+                interpolatedTsMod = lowerMod + ((upperMod - lowerMod) * decimalPart);
+            }
             
-            const upperMod = this.midfieldModifiers[upperBound][attitude];
-            const decimalPart = ts - lowerBound;
-            const interpolatedMod = lowerMod + ((upperMod - lowerMod) * decimalPart);
+            // Sequential application of exact multipliers
+            let rating = baseRating * interpolatedTsMod;
+            rating *= this.multipliers.attitude[attitude];
+            rating *= this.multipliers.venue[venue];
+            rating *= this.multipliers.tactic[tactic];
             
-            return baseRating * interpolatedMod;
+            return rating;
         }
     }
 
@@ -226,9 +238,16 @@
             const schedule = [];
             for (let week = 1; week <= 15; week++) {
                 if (week <= 14) {
-                    schedule.push({ week, day: 'Tuesday', type: 'Cup', attitude: 'NORMAL', isActive: true });
+                    schedule.push({ 
+                        week, day: 'Tue', type: 'Cup', attitude: 'NORMAL', 
+                        venue: 'AWAY', tactic: 'NORMAL', isActive: true 
+                    });
                 }
-                schedule.push({ week, day: 'Saturday', type: week === 15 ? 'Qualifier' : 'League', attitude: 'NORMAL', isActive: true });
+                schedule.push({ 
+                    week, day: 'Sat', type: week === 15 ? 'Qualifier' : 'League', 
+                    attitude: 'NORMAL', venue: week % 2 === 0 ? 'HOME' : 'AWAY', 
+                    tactic: 'NORMAL', isActive: true 
+                });
             }
             return schedule;
         }
@@ -243,7 +262,7 @@
 
             for (let i = 0; i < scheduleConfig.length; i++) {
                 const match = scheduleConfig[i];
-                const updatesToNext = match.day === 'Tuesday' ? this.updatesBetweenTueAndSat : this.updatesBetweenSatAndTue;
+                const updatesToNext = match.day === 'Tue' ? this.updatesBetweenTueAndSat : this.updatesBetweenSatAndTue;
                 
                 if (!match.isActive) {
                     results.push({ ...match, preMatchTS: null, midfieldRating: null, postMatchTS: null });
@@ -252,7 +271,9 @@
                 }
 
                 const preMatchTS = currentTS;
-                const midfieldRating = this.simulator.calculateMidfieldRating(baseMidfieldRating, preMatchTS, match.attitude);
+                const midfieldRating = this.simulator.calculateMidfieldRating(
+                    baseMidfieldRating, preMatchTS, match.attitude, match.venue, match.tactic
+                );
                 currentTS = this.simulator.applyMatchEffect(preMatchTS, match.attitude);
                 const postMatchTS = currentTS;
 
@@ -299,10 +320,19 @@
             if (saved && saved.settings && saved.schedule) {
                 this.settings = saved.settings;
                 this.schedule = saved.schedule;
+                this.ensureNewPropertiesExist();
             } else {
                 this.instantiateController();
                 this.schedule = this.controller.generateDefaultSchedule();
             }
+        }
+        
+        ensureNewPropertiesExist() {
+            // Data migration for existing saves
+            this.schedule.forEach(match => {
+                if (!match.venue) match.venue = 'AWAY';
+                if (!match.tactic) match.tactic = 'NORMAL';
+            });
         }
 
         instantiateController() {
@@ -354,13 +384,11 @@
     };
 
     function renderUI() {
-        // Sync Inputs with State
         domEls.coach.value = app.settings.coachLeadership;
         domEls.psychologist.value = app.settings.psychologistLevel;
         domEls.midfield.value = app.settings.baseMidfieldRating;
         domEls.national.checked = app.settings.isNationalTeam;
 
-        // Run Simulation and Render Table
         const results = app.runSimulation();
         domEls.tbody.innerHTML = '';
 
@@ -368,12 +396,25 @@
             const tr = document.createElement('tr');
             if (!match.isActive) tr.classList.add('inactive-row');
 
-            // Played Checkbox
             const playedCheck = `<input type="checkbox" class="toggle-active" data-idx="${idx}" ${match.isActive ? 'checked' : ''}>`;
 
-            // Attitude Select
+            const venueSelect = `
+                <select class="select-control match-venue" data-idx="${idx}" ${!match.isActive ? 'disabled' : ''}>
+                    <option value="HOME" ${match.venue === 'HOME' ? 'selected' : ''}>Home</option>
+                    <option value="AWAY" ${match.venue === 'AWAY' ? 'selected' : ''}>Away</option>
+                    <option value="DERBY_AWAY" ${match.venue === 'DERBY_AWAY' ? 'selected' : ''}>Derby (Away)</option>
+                </select>
+            `;
+            
+            const tacticSelect = `
+                <select class="select-control match-tactic" data-idx="${idx}" ${!match.isActive ? 'disabled' : ''}>
+                    <option value="NORMAL" ${match.tactic === 'NORMAL' ? 'selected' : ''}>Normal</option>
+                    <option value="CA" ${match.tactic === 'CA' ? 'selected' : ''}>Counter-Attack</option>
+                </select>
+            `;
+
             const attitudeSelect = `
-                <select class="attitude-select attitude-${match.attitude}" data-idx="${idx}" ${!match.isActive ? 'disabled' : ''}>
+                <select class="select-control attitude-${match.attitude} match-attitude" data-idx="${idx}" ${!match.isActive ? 'disabled' : ''}>
                     <option value="PIC" ${match.attitude === 'PIC' ? 'selected' : ''}>PIC</option>
                     <option value="NORMAL" ${match.attitude === 'NORMAL' ? 'selected' : ''}>NORMAL</option>
                     <option value="MOTS" ${match.attitude === 'MOTS' ? 'selected' : ''}>MOTS</option>
@@ -385,9 +426,11 @@
                 <td>${match.day}</td>
                 <td>${match.type}</td>
                 <td>${playedCheck}</td>
+                <td>${venueSelect}</td>
+                <td>${tacticSelect}</td>
                 <td>${attitudeSelect}</td>
                 <td>${match.isActive ? match.preMatchTS : '-'}</td>
-                <td>${match.isActive ? match.midfieldRating : '-'}</td>
+                <td><strong>${match.isActive ? match.midfieldRating : '-'}</strong></td>
                 <td>${match.isActive ? match.postMatchTS : '-'}</td>
             `;
             domEls.tbody.appendChild(tr);
@@ -404,7 +447,21 @@
             });
         });
 
-        document.querySelectorAll('.attitude-select').forEach(sel => {
+        document.querySelectorAll('.match-venue').forEach(sel => {
+            sel.addEventListener('change', (e) => {
+                app.updateMatch(e.target.dataset.idx, 'venue', e.target.value);
+                renderUI();
+            });
+        });
+        
+        document.querySelectorAll('.match-tactic').forEach(sel => {
+            sel.addEventListener('change', (e) => {
+                app.updateMatch(e.target.dataset.idx, 'tactic', e.target.value);
+                renderUI();
+            });
+        });
+
+        document.querySelectorAll('.match-attitude').forEach(sel => {
             sel.addEventListener('change', (e) => {
                 app.updateMatch(e.target.dataset.idx, 'attitude', e.target.value);
                 renderUI();
@@ -412,7 +469,6 @@
         });
     }
 
-    // Attach Header Listeners
     domEls.coach.addEventListener('change', (e) => { app.updateSetting('coachLeadership', e.target.value); renderUI(); });
     domEls.psychologist.addEventListener('change', (e) => { app.updateSetting('psychologistLevel', e.target.value); renderUI(); });
     domEls.midfield.addEventListener('change', (e) => { app.updateSetting('baseMidfieldRating', e.target.value); renderUI(); });
@@ -425,7 +481,6 @@
         }
     });
 
-    // Initial Load
     renderUI();
 
 </script>
