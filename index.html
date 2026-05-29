@@ -457,8 +457,9 @@
 
         runSimulation() {
             this.instantiateController();
+            const startingTS = this.settings.isNationalTeam ? 5.0 : 4.5;
             return this.controller.simulateSeason(
-                this.settings.initialTS, 
+                startingTS, 
                 Number(this.settings.baseMidfieldRating), 
                 this.schedule
             );
