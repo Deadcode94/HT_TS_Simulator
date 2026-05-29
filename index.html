@@ -104,6 +104,10 @@
             opacity: 0.5;
             background-color: #eee !important;
         }
+        
+        .new-week-row td {
+            border-top: 3px solid #888;
+        }
 
         body.dark-mode {
             --bg-color: #121212;
@@ -121,6 +125,7 @@
         body.dark-mode .attitude-PIC { background-color: #1e4620; color: #d4edda; }
         body.dark-mode .attitude-NORMAL { background-color: #383d41; color: #e2e3e5; }
         body.dark-mode .attitude-MOTS { background-color: #5c161d; color: #f8d7da; }
+        body.dark-mode .new-week-row td { border-top: 3px solid #555; }
         
         .btn-theme {
             background-color: #5bc0de;
@@ -483,10 +488,17 @@
 
         const results = app.runSimulation();
         domEls.tbody.innerHTML = '';
+        
+        let currentWeek = null;
 
         results.forEach((match, idx) => {
             const tr = document.createElement('tr');
             if (!match.effectivelyActive) tr.classList.add('inactive-row');
+            
+            if (currentWeek !== null && match.week !== currentWeek) {
+                tr.classList.add('new-week-row');
+            }
+            currentWeek = match.week;
 
             let playedCheck = '';
             if (match.type === 'Cup') {
