@@ -255,6 +255,7 @@
         simulateSeason(initialTS, baseMidfieldRating, scheduleConfig) {
             let currentTS = initialTS;
             const results = [];
+            let isCupActive = true;
 
             for (let i = 0; i < this.updatesBetweenSatAndTue; i++) {
                 currentTS = this.simulator.applyDailyUpdate(currentTS);
@@ -264,21 +265,34 @@
                 const match = scheduleConfig[i];
                 const updatesToNext = match.day === 'Tue' ? this.updatesBetweenTueAndSat : this.updatesBetweenSatAndTue;
                 
-                if (!match.isActive) {
-                    results.push({ ...match, preMatchTS: null, midfieldRating: null, postMatchTS: null });
-                    for (let u = 0; u < updatesToNext; u++) currentTS = this.simulator.applyDailyUpdate(currentTS);
-                    continue;
+                let effectivelyActive = match.isActive;
+                let cupEliminatedBefore = false;
+
+                if (match.type === 'Cup') {
+                    if (!isCupActive) {
+                        effectivelyActive = false;
+                        cupEliminatedBefore = true;
+                    }
+                    if (!match.isActive) {
+                        isCupActive = false;
+                    }
+                } else if (match.type === 'League') {
+                    effectivelyActive = true;
                 }
 
                 const preMatchTS = currentTS;
+                const effectiveAttitude = effectivelyActive ? match.attitude : 'NORMAL';
+
                 const midfieldRating = this.simulator.calculateMidfieldRating(
-                    baseMidfieldRating, preMatchTS, match.attitude, match.venue, match.tactic
+                    baseMidfieldRating, preMatchTS, effectiveAttitude, match.venue, match.tactic
                 );
-                currentTS = this.simulator.applyMatchEffect(preMatchTS, match.attitude);
+                currentTS = this.simulator.applyMatchEffect(preMatchTS, effectiveAttitude);
                 const postMatchTS = currentTS;
 
                 results.push({
                     ...match,
+                    effectivelyActive,
+                    cupEliminatedBefore,
                     preMatchTS: parseFloat(preMatchTS.toFixed(2)),
                     midfieldRating: parseFloat(midfieldRating.toFixed(2)),
                     postMatchTS: parseFloat(postMatchTS.toFixed(2))
@@ -394,12 +408,19 @@
 
         results.forEach((match, idx) => {
             const tr = document.createElement('tr');
-            if (!match.isActive) tr.classList.add('inactive-row');
+            if (!match.effectivelyActive) tr.classList.add('inactive-row');
 
-            const playedCheck = `<input type="checkbox" class="toggle-active" data-idx="${idx}" ${match.isActive ? 'checked' : ''}>`;
+            let playedCheck = '';
+            if (match.type === 'Cup') {
+                const checkedAttr = match.effectivelyActive ? 'checked' : '';
+                const disabledAttr = match.cupEliminatedBefore ? 'disabled' : '';
+                playedCheck = `<input type="checkbox" class="toggle-active" data-idx="${idx}" ${checkedAttr} ${disabledAttr}>`;
+            } else if (match.type === 'Qualifier') {
+                playedCheck = `<input type="checkbox" class="toggle-active" data-idx="${idx}" ${match.isActive ? 'checked' : ''}>`;
+            }
 
             const venueSelect = `
-                <select class="select-control match-venue" data-idx="${idx}" ${!match.isActive ? 'disabled' : ''}>
+                <select class="select-control match-venue" data-idx="${idx}">
                     <option value="HOME" ${match.venue === 'HOME' ? 'selected' : ''}>Home</option>
                     <option value="AWAY" ${match.venue === 'AWAY' ? 'selected' : ''}>Away</option>
                     <option value="DERBY_AWAY" ${match.venue === 'DERBY_AWAY' ? 'selected' : ''}>Derby (Away)</option>
@@ -407,17 +428,20 @@
             `;
             
             const tacticSelect = `
-                <select class="select-control match-tactic" data-idx="${idx}" ${!match.isActive ? 'disabled' : ''}>
+                <select class="select-control match-tactic" data-idx="${idx}">
                     <option value="NORMAL" ${match.tactic === 'NORMAL' ? 'selected' : ''}>Normal</option>
                     <option value="CA" ${match.tactic === 'CA' ? 'selected' : ''}>Counter-Attack</option>
                 </select>
             `;
 
+            const displayAttitude = match.effectivelyActive ? match.attitude : 'NORMAL';
+            const attitudeDisabled = !match.effectivelyActive ? 'disabled' : '';
+
             const attitudeSelect = `
-                <select class="select-control attitude-${match.attitude} match-attitude" data-idx="${idx}" ${!match.isActive ? 'disabled' : ''}>
-                    <option value="PIC" ${match.attitude === 'PIC' ? 'selected' : ''}>PIC</option>
-                    <option value="NORMAL" ${match.attitude === 'NORMAL' ? 'selected' : ''}>NORMAL</option>
-                    <option value="MOTS" ${match.attitude === 'MOTS' ? 'selected' : ''}>MOTS</option>
+                <select class="select-control attitude-${displayAttitude} match-attitude" data-idx="${idx}" ${attitudeDisabled}>
+                    <option value="PIC" ${displayAttitude === 'PIC' ? 'selected' : ''}>PIC</option>
+                    <option value="NORMAL" ${displayAttitude === 'NORMAL' ? 'selected' : ''}>NORMAL</option>
+                    <option value="MOTS" ${displayAttitude === 'MOTS' ? 'selected' : ''}>MOTS</option>
                 </select>
             `;
 
@@ -429,9 +453,9 @@
                 <td>${venueSelect}</td>
                 <td>${tacticSelect}</td>
                 <td>${attitudeSelect}</td>
-                <td>${match.isActive ? match.preMatchTS : '-'}</td>
-                <td><strong>${match.isActive ? match.midfieldRating : '-'}</strong></td>
-                <td>${match.isActive ? match.postMatchTS : '-'}</td>
+                <td>${match.preMatchTS}</td>
+                <td><strong>${match.midfieldRating}</strong></td>
+                <td>${match.postMatchTS}</td>
             `;
             domEls.tbody.appendChild(tr);
         });
