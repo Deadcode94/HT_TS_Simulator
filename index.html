@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hattrick Team Spirit Simulator</title>
+    <style>
+        :root {
+            --primary-color: #005f20;
+            --bg-color: #f4f7f6;
+            --panel-bg: #ffffff;
+            --border-color: #ddd;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: var(--primary-color);
+            text-align: center;
+        }
+        .panel {
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            align-items: end;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .form-group label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+        .form-group input, .form-group select {
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 1em;
+        }
+        .checkbox-group {
+            flex-direction: row;
+            align-items: center;
+            gap: 10px;
+        }
+        .btn-reset {
+            background-color: #d9534f;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        .btn-reset:hover {
+            background-color: #c9302c;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            text-align: center;
+        }
+        th {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        
+        .attitude-select {
+            padding: 5px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .attitude-PIC { background-color: #d4edda; color: #155724; }
+        .attitude-NORMAL { background-color: #e2e3e5; color: #383d41; }
+        .attitude-MOTS { background-color: #f8d7da; color: #721c24; }
+        
+        .inactive-row {
+            opacity: 0.5;
+            background-color: #eee !important;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>HT Team Spirit Simulator</h1>
+    
+    <div class="panel">
+        <div class="settings-grid">
+            <div class="form-group">
+                <label for="coachLeadership">Coach Leadership (1-9)</label>
+                <input type="number" id="coachLeadership" min="1" max="9" value="6">
+            </div>
+            <div class="form-group">
+                <label for="psychologistLevel">Psychologist Level (0-5)</label>
+                <input type="number" id="psychologistLevel" min="0" max="5" value="0">
+            </div>
+            <div class="form-group">
+                <label for="baseMidfieldRating">Base Midfield Rating</label>
+                <input type="number" id="baseMidfieldRating" step="0.1" value="10.0">
+            </div>
+            <div class="form-group checkbox-group">
+                <input type="checkbox" id="isNationalTeam">
+                <label for="isNationalTeam" style="margin:0;">National Team</label>
+            </div>
+            <div class="form-group">
+                <button id="btnReset" class="btn-reset">Reset Season</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <table>
+            <thead>
+                <tr>
+                    <th>Week</th>
+                    <th>Day</th>
+                    <th>Match Type</th>
+                    <th>Played?</th>
+                    <th>Attitude</th>
+                    <th>Pre-Match TS</th>
+                    <th>Midfield Rating</th>
+                    <th>Post-Match TS</th>
+                </tr>
+            </thead>
+            <tbody id="scheduleTableBody">
+                </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // --- MATHEMATICAL LOGIC ---
+    class TeamSpiritSimulator {
+        constructor(coachLeadership, psychologistLevel = 0, isNationalTeam = false) {
+            this.coachLeadership = coachLeadership;
+            this.psychologistLevel = psychologistLevel;
+            this.isNationalTeam = isNationalTeam;
+            
+            this.midfieldModifiers = {
+                10: { PIC: 1.22, NORMAL: 1.42, MOTS: 1.62 },
+                9:  { PIC: 1.16, NORMAL: 1.35, MOTS: 1.54 },
+                8:  { PIC: 1.10, NORMAL: 1.28, MOTS: 1.46 },
+                7:  { PIC: 1.04, NORMAL: 1.21, MOTS: 1.38 },
+                6:  { PIC: 0.98, NORMAL: 1.14, MOTS: 1.30 },
+                5:  { PIC: 0.92, NORMAL: 1.07, MOTS: 1.22 },
+                4:  { PIC: 0.87, NORMAL: 1.00, MOTS: 1.13 },
+                3:  { PIC: 0.81, NORMAL: 0.93, MOTS: 1.05 },
+                2:  { PIC: 0.75, NORMAL: 0.86, MOTS: 0.97 },
+                1:  { PIC: 0.63, NORMAL: 0.72, MOTS: 0.81 }
+            };
+        }
+
+        getTargetSpirit() {
+            let target = 4.5 + (this.psychologistLevel / 10.0);
+            if (this.isNationalTeam) target += 0.5;
+            return target;
+        }
+
+        applyMatchEffect(preMatchTS, attitude) {
+            let postMatchTS = preMatchTS;
+            if (attitude === 'PIC') postMatchTS = preMatchTS * (1.0 + (1.0 / 3.0));
+            else if (attitude === 'MOTS') postMatchTS = preMatchTS / 2.0;
+            return Math.min(10.0, Math.max(0.0, postMatchTS));
+        }
+
+        applyDailyUpdate(currentTS) {
+            const target = this.getTargetSpirit();
+            let newTS = currentTS;
+            if (currentTS >= target) {
+                newTS *= 1.0 - (((currentTS - target) / (this.coachLeadership / 3.0)) / 100.0);
+            } else {
+                newTS *= 1.0 + (((target - currentTS) * (this.coachLeadership / 2.0)) / 100.0);
+            }
+            return newTS;
+        }
+
+        calculateMidfieldRating(baseRating, currentTS, attitude) {
+            const ts = Math.min(10.0, Math.max(1.0, currentTS));
+            const lowerBound = Math.floor(ts);
+            const upperBound = Math.ceil(ts);
+            const lowerMod = this.midfieldModifiers[lowerBound][attitude];
+            
+            if (lowerBound === upperBound) return baseRating * lowerMod;
+            
+            const upperMod = this.midfieldModifiers[upperBound][attitude];
+            const decimalPart = ts - lowerBound;
+            const interpolatedMod = lowerMod + ((upperMod - lowerMod) * decimalPart);
+            
+            return baseRating * interpolatedMod;
+        }
+    }
+
+    // --- SEASON CONTROLLER ---
+    class SeasonController {
+        constructor(simulator) {
+            this.simulator = simulator;
+            this.updatesBetweenSatAndTue = 3; 
+            this.updatesBetweenTueAndSat = 4;
+        }
+
+        generateDefaultSchedule() {
+            const schedule = [];
+            for (let week = 1; week <= 15; week++) {
+                if (week <= 14) {
+                    schedule.push({ week, day: 'Tuesday', type: 'Cup', attitude: 'NORMAL', isActive: true });
+                }
+                schedule.push({ week, day: 'Saturday', type: week === 15 ? 'Qualifier' : 'League', attitude: 'NORMAL', isActive: true });
+            }
+            return schedule;
+        }
+
+        simulateSeason(initialTS, baseMidfieldRating, scheduleConfig) {
+            let currentTS = initialTS;
+            const results = [];
+
+            for (let i = 0; i < this.updatesBetweenSatAndTue; i++) {
+                currentTS = this.simulator.applyDailyUpdate(currentTS);
+            }
+
+            for (let i = 0; i < scheduleConfig.length; i++) {
+                const match = scheduleConfig[i];
+                const updatesToNext = match.day === 'Tuesday' ? this.updatesBetweenTueAndSat : this.updatesBetweenSatAndTue;
+                
+                if (!match.isActive) {
+                    results.push({ ...match, preMatchTS: null, midfieldRating: null, postMatchTS: null });
+                    for (let u = 0; u < updatesToNext; u++) currentTS = this.simulator.applyDailyUpdate(currentTS);
+                    continue;
+                }
+
+                const preMatchTS = currentTS;
+                const midfieldRating = this.simulator.calculateMidfieldRating(baseMidfieldRating, preMatchTS, match.attitude);
+                currentTS = this.simulator.applyMatchEffect(preMatchTS, match.attitude);
+                const postMatchTS = currentTS;
+
+                results.push({
+                    ...match,
+                    preMatchTS: parseFloat(preMatchTS.toFixed(2)),
+                    midfieldRating: parseFloat(midfieldRating.toFixed(2)),
+                    postMatchTS: parseFloat(postMatchTS.toFixed(2))
+                });
+
+                for (let u = 0; u < updatesToNext; u++) {
+                    currentTS = this.simulator.applyDailyUpdate(currentTS);
+                }
+            }
+            return results;
+        }
+    }
+
+    // --- STORAGE & APP STATE ---
+    class StorageManager {
+        constructor() { this.storageKey = 'ht_ts_season_simulator_data'; }
+        saveData(settings, schedule) { localStorage.setItem(this.storageKey, JSON.stringify({ settings, schedule })); }
+        loadData() { return JSON.parse(localStorage.getItem(this.storageKey)); }
+        clearData() { localStorage.removeItem(this.storageKey); }
+    }
+
+    class SeasonApp {
+        constructor() {
+            this.storage = new StorageManager();
+            this.defaultSettings = {
+                coachLeadership: 6,
+                psychologistLevel: 0,
+                isNationalTeam: false,
+                baseMidfieldRating: 10.0,
+                initialTS: 4.5
+            };
+            this.settings = { ...this.defaultSettings };
+            this.schedule = [];
+            this.init();
+        }
+
+        init() {
+            const saved = this.storage.loadData();
+            if (saved && saved.settings && saved.schedule) {
+                this.settings = saved.settings;
+                this.schedule = saved.schedule;
+            } else {
+                this.instantiateController();
+                this.schedule = this.controller.generateDefaultSchedule();
+            }
+        }
+
+        instantiateController() {
+            const sim = new TeamSpiritSimulator(
+                Number(this.settings.coachLeadership), 
+                Number(this.settings.psychologistLevel), 
+                this.settings.isNationalTeam
+            );
+            this.controller = new SeasonController(sim);
+        }
+
+        resetState() {
+            this.storage.clearData();
+            this.settings = { ...this.defaultSettings };
+            this.instantiateController();
+            this.schedule = this.controller.generateDefaultSchedule();
+        }
+
+        updateSetting(key, value) {
+            this.settings[key] = value;
+            this.storage.saveData(this.settings, this.schedule);
+        }
+
+        updateMatch(index, field, value) {
+            this.schedule[index][field] = value;
+            this.storage.saveData(this.settings, this.schedule);
+        }
+
+        runSimulation() {
+            this.instantiateController();
+            return this.controller.simulateSeason(
+                this.settings.initialTS, 
+                Number(this.settings.baseMidfieldRating), 
+                this.schedule
+            );
+        }
+    }
+
+    // --- DOM BINDING & UI RENDERING ---
+    const app = new SeasonApp();
+
+    const domEls = {
+        coach: document.getElementById('coachLeadership'),
+        psychologist: document.getElementById('psychologistLevel'),
+        midfield: document.getElementById('baseMidfieldRating'),
+        national: document.getElementById('isNationalTeam'),
+        reset: document.getElementById('btnReset'),
+        tbody: document.getElementById('scheduleTableBody')
+    };
+
+    function renderUI() {
+        // Sync Inputs with State
+        domEls.coach.value = app.settings.coachLeadership;
+        domEls.psychologist.value = app.settings.psychologistLevel;
+        domEls.midfield.value = app.settings.baseMidfieldRating;
+        domEls.national.checked = app.settings.isNationalTeam;
+
+        // Run Simulation and Render Table
+        const results = app.runSimulation();
+        domEls.tbody.innerHTML = '';
+
+        results.forEach((match, idx) => {
+            const tr = document.createElement('tr');
+            if (!match.isActive) tr.classList.add('inactive-row');
+
+            // Played Checkbox
+            const playedCheck = `<input type="checkbox" class="toggle-active" data-idx="${idx}" ${match.isActive ? 'checked' : ''}>`;
+
+            // Attitude Select
+            const attitudeSelect = `
+                <select class="attitude-select attitude-${match.attitude}" data-idx="${idx}" ${!match.isActive ? 'disabled' : ''}>
+                    <option value="PIC" ${match.attitude === 'PIC' ? 'selected' : ''}>PIC</option>
+                    <option value="NORMAL" ${match.attitude === 'NORMAL' ? 'selected' : ''}>NORMAL</option>
+                    <option value="MOTS" ${match.attitude === 'MOTS' ? 'selected' : ''}>MOTS</option>
+                </select>
+            `;
+
+            tr.innerHTML = `
+                <td>${match.week}</td>
+                <td>${match.day}</td>
+                <td>${match.type}</td>
+                <td>${playedCheck}</td>
+                <td>${attitudeSelect}</td>
+                <td>${match.isActive ? match.preMatchTS : '-'}</td>
+                <td>${match.isActive ? match.midfieldRating : '-'}</td>
+                <td>${match.isActive ? match.postMatchTS : '-'}</td>
+            `;
+            domEls.tbody.appendChild(tr);
+        });
+
+        attachTableListeners();
+    }
+
+    function attachTableListeners() {
+        document.querySelectorAll('.toggle-active').forEach(chk => {
+            chk.addEventListener('change', (e) => {
+                app.updateMatch(e.target.dataset.idx, 'isActive', e.target.checked);
+                renderUI();
+            });
+        });
+
+        document.querySelectorAll('.attitude-select').forEach(sel => {
+            sel.addEventListener('change', (e) => {
+                app.updateMatch(e.target.dataset.idx, 'attitude', e.target.value);
+                renderUI();
+            });
+        });
+    }
+
+    // Attach Header Listeners
+    domEls.coach.addEventListener('change', (e) => { app.updateSetting('coachLeadership', e.target.value); renderUI(); });
+    domEls.psychologist.addEventListener('change', (e) => { app.updateSetting('psychologistLevel', e.target.value); renderUI(); });
+    domEls.midfield.addEventListener('change', (e) => { app.updateSetting('baseMidfieldRating', e.target.value); renderUI(); });
+    domEls.national.addEventListener('change', (e) => { app.updateSetting('isNationalTeam', e.target.checked); renderUI(); });
+
+    domEls.reset.addEventListener('click', () => {
+        if(confirm("Are you sure you want to reset all data?")) {
+            app.resetState();
+            renderUI();
+        }
+    });
+
+    // Initial Load
+    renderUI();
+
+</script>
+
+</body>
+</html>
