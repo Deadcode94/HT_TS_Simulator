@@ -330,7 +330,6 @@ function renderUI() {
 
     results.forEach((match, idx) => {
         const tr = document.createElement('tr');
-        if (!match.effectivelyActive) tr.classList.add('inactive-row');
         
         if (currentWeek !== null && match.week !== currentWeek) {
             tr.classList.add('new-week-row');
@@ -363,9 +362,10 @@ function renderUI() {
 
         const displayAttitude = match.effectivelyActive ? match.attitude : 'NORMAL';
         const attitudeDisabled = !match.effectivelyActive ? 'disabled' : '';
+        const attitudeStyle = !match.effectivelyActive ? 'style="opacity: 0.5;"' : '';
 
         const attitudeSelect = `
-            <select class="select-control attitude-${displayAttitude} match-attitude" data-idx="${idx}" ${attitudeDisabled}>
+            <select class="select-control attitude-${displayAttitude} match-attitude" data-idx="${idx}" ${attitudeDisabled} ${attitudeStyle}>
                 <option value="PIC" ${displayAttitude === 'PIC' ? 'selected' : ''}>PIC</option>
                 <option value="NORMAL" ${displayAttitude === 'NORMAL' ? 'selected' : ''}>NORMAL</option>
                 <option value="MOTS" ${displayAttitude === 'MOTS' ? 'selected' : ''}>MOTS</option>
