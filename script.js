@@ -59,19 +59,24 @@ class TeamSpiritSimulator {
         if (Math.abs(currentTS - target) < 0.001) return target;
 
         if (currentTS > target) {
-            // Determine the integer bucket boundary (e.g., 9.00 -> bucket 8, 9.01 -> bucket 9)
-            let bucket = Math.ceil(currentTS - 0.0001) - 1;
+            // Clean up precision dust (e.g., 9.00000001 or 8.99999 become exactly 9)
+            const cleanTS = parseFloat(currentTS.toFixed(4));
+            
+            // Map exact integers to the bucket below them (9.0 -> bucket 8)
+            // Decimal values drop down to their integer floor (9.01 -> bucket 9)
+            let bucket = Number.isInteger(cleanTS) ? cleanTS - 1 : Math.floor(cleanTS);
+
             if (bucket >= 9) bucket = 9;
-            if (bucket < 1) bucket = 1;
+            if (bucket < 4) bucket = 4; // Bounding at 4 since TS never drops below 4.5 in this block
             
             const dropRates = {
-                7: { 9: 1/3, 8: 1/5, 7: 1/7, 6: 1/13, 5: 1/20, 4: 1/30, 3: 1/40, 2: 1/50, 1: 1/60 },
-                6: { 9: 1/3, 8: 1/5, 7: 1/7, 6: 1/13, 5: 1/20, 4: 1/30, 3: 1/40, 2: 1/50, 1: 1/60 },
-                5: { 9: 1/2, 8: 1/4, 7: 1/5, 6: 1/9,  5: 1/14, 4: 1/20, 3: 1/30, 2: 1/40, 1: 1/50 },
-                4: { 9: 1/1, 8: 1/3, 7: 1/4, 6: 1/6,  5: 1/9,  4: 1/14, 3: 1/20, 2: 1/30, 1: 1/40 },
-                3: { 9: 1/1, 8: 1/2, 7: 1/3, 6: 1/4,  5: 1/6,  4: 1/9,  3: 1/14, 2: 1/20, 1: 1/30 },
-                2: { 9: 2/1, 8: 1/1, 7: 1/1, 6: 1/2,  5: 1/3,  4: 1/6,  3: 1/9,  2: 1/14, 1: 1/20 },
-                1: { 9: 2/1, 8: 1/1, 7: 1/1, 6: 1/2,  5: 1/3,  4: 1/6,  3: 1/9,  2: 1/14, 1: 1/20 }
+                7: { 9: 1/3, 8: 1/5, 7: 1/7, 6: 1/13, 5: 1/33, 4: 1/35 },
+                6: { 9: 1/3, 8: 1/5, 7: 1/7, 6: 1/13, 5: 1/33, 4: 1/35 },
+                5: { 9: 1/2, 8: 1/4, 7: 1/6, 6: 1/10,  5: 1/26, 4: 1/30 },
+                4: { 9: 1/1, 8: 1/3, 7: 1/5, 6: 1/7,  5: 1/20,  4: 1/25 },
+                3: { 9: 1/1, 8: 1/2, 7: 1/2, 6: 1/5,  5: 1/13,  4: 1/15 },
+                2: { 9: 1/1, 8: 1/1, 7: 1/1, 6: 1/2,  5: 1/6,  4: 1/10 },
+                1: { 9: 1/1, 8: 1/1, 7: 1/1, 6: 1/2,  5: 1/6,  4: 1/10 }
             };
             
             let drop = dropRates[this.coachLeadership]?.[bucket] || 0.1;
