@@ -380,8 +380,8 @@ function renderUI() {
 
         const trainingInput = match.day === 'Tue' ? `
             <div style="display: flex; align-items: center; justify-content: center; gap: 4px;">
-                <input type="range" class="match-training-slider" data-idx="${idx}" value="${match.trainingIntensity}" min="0" max="100" step="1" style="width: 50px;">
-                <input type="number" class="match-training-number" data-idx="${idx}" value="${match.trainingIntensity}" min="0" max="100" step="1" style="width: 50px; text-align: center;">
+                <input type="range" class="match-training-slider" data-idx="${idx}" value="${match.trainingIntensity}" min="1" max="100" step="1" style="width: 50px;">
+                <input type="number" class="match-training-number" data-idx="${idx}" value="${match.trainingIntensity}" min="1" max="100" step="1" style="width: 50px; text-align: center;">
                 <span class="cell-boosted-ts" style="${boostStyle}" title="Thursday Boosted TS">${match.boostedTS ? `=> <strong>${match.boostedTS.toFixed(2)}</strong>` : ''}</span>
             </div>
         ` : '<span style="color: #999;">-</span>';
@@ -439,7 +439,7 @@ function attachTableListeners() {
             e.target.nextElementSibling.value = e.target.value;
             let val = parseInt(e.target.value, 10);
             if (!isNaN(val)) {
-                if (val < 0) val = 0;
+                if (val <= 0) val = 1; // Prevent zero or negative intensity which breaks the boost formula
                 if (val > 100) val = 100;
                 app.schedule[e.target.dataset.idx].trainingIntensity = val;
                 updateCalculatedData();
@@ -447,7 +447,7 @@ function attachTableListeners() {
         });
         inp.addEventListener('change', (e) => {
             let val = parseInt(e.target.value, 10);
-            if (isNaN(val) || val < 0) val = 0;
+            if (isNaN(val) || val <= 0) val = 1; // Prevent zero or negative intensity which breaks the boost formula
             if (val > 100) val = 100;
             app.updateMatch(e.target.dataset.idx, 'trainingIntensity', val);
             renderUI();
@@ -459,7 +459,7 @@ function attachTableListeners() {
             e.target.previousElementSibling.value = e.target.value;
             let val = parseInt(e.target.value, 10);
             if (!isNaN(val)) {
-                if (val < 0) val = 0;
+                if (val <= 0) val = 1; // Prevent zero or negative intensity which breaks the boost formula
                 if (val > 100) val = 100;
                 app.schedule[e.target.dataset.idx].trainingIntensity = val;
                 updateCalculatedData();
@@ -467,7 +467,7 @@ function attachTableListeners() {
         });
         inp.addEventListener('change', (e) => {
             let val = parseInt(e.target.value, 10);
-            if (isNaN(val) || val < 0) val = 0;
+            if (isNaN(val) || val <= 0) val = 1; // Prevent zero or negative intensity which breaks the boost formula
             if (val > 100) val = 100;
             app.updateMatch(e.target.dataset.idx, 'trainingIntensity', val);
             renderUI();
