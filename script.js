@@ -30,6 +30,19 @@ class TeamSpiritSimulator {
         return Math.min(10.0, Math.max(0.0, postMatchTS));
     }
 
+    // Apply TS effect from changing training intensity (e.g., dropping before a final)
+    // Formula ported from Hattrick Organizer / HT-Tools
+    applyTrainingIntensityChange(currentTS, oldIntensity, newIntensity) {
+        if (oldIntensity === newIntensity || oldIntensity <= 0) return currentTS;
+        // Mathematically identical to the HT tools logic
+        const logBase07 = Math.log(newIntensity / oldIntensity) / Math.log(0.7);
+        let newTS = currentTS * Math.pow(1.2, logBase07);
+        
+        // Match the exact precision rounding of external tools
+        newTS = parseFloat(newTS.toFixed(2));
+        return Math.min(10.0, Math.max(0.0, newTS));
+    }
+
     // Daily decay uses Piecewise Linear Decay (Lokes Table)
     // Rising TS uses the asymptotic formula
     applyDailyUpdate(currentTS) {
@@ -102,12 +115,12 @@ class SeasonController {
         for (let week = 1; week <= 15; week++) {
             schedule.push({ 
                 week, day: 'Tue', type: 'Cup', attitude: 'NORMAL', 
-                venue: 'AWAY', tactic: 'NORMAL', isActive: true 
+                venue: 'AWAY', tactic: 'NORMAL', isActive: true, trainingIntensity: 100
             });
             schedule.push({ 
                 week, day: 'Sat', type: week === 15 ? 'Qualifier' : 'League', 
                 attitude: 'NORMAL', venue: week % 2 === 0 ? 'HOME' : 'AWAY', 
-                tactic: 'NORMAL', isActive: true 
+                tactic: 'NORMAL', isActive: true
             });
         }
         return schedule;
@@ -117,6 +130,7 @@ class SeasonController {
         let currentTS = initialTS;
         const results = [];
         let isCupActive = true;
+        let currentIntensity = 100;
 
         for (let i = 0; i < this.updatesBetweenSatAndTue; i++) {
             currentTS = this.simulator.applyDailyUpdate(currentTS);
@@ -159,7 +173,29 @@ class SeasonController {
                 postMatchTS: parseFloat(postMatchTS.toFixed(2))
             });
 
-            for (let u = 0; u < updatesToNext; u++) {
+            // Calculate precise timing of the training update
+            let updatesBeforeTraining = 0;
+            let updatesAfterTraining = updatesToNext;
+
+            if (match.day === 'Tue') {
+                updatesBeforeTraining = 0; // Training boost acts directly on the post-match TS 
+                updatesAfterTraining = 3;  // The TS boost suffers exactly 3 drops before the Sat match
+            }
+
+            for (let u = 0; u < updatesBeforeTraining; u++) {
+                currentTS = this.simulator.applyDailyUpdate(currentTS);
+            }
+
+            let newIntensity = match.trainingIntensity !== undefined ? Number(match.trainingIntensity) : currentIntensity;
+            if (newIntensity !== currentIntensity) {
+                const tsBeforeBoost = currentTS;
+                currentTS = this.simulator.applyTrainingIntensityChange(currentTS, currentIntensity, newIntensity);
+                results[results.length - 1].boostedTS = currentTS;
+                results[results.length - 1].boostDirection = currentTS > tsBeforeBoost ? 'up' : 'down';
+                currentIntensity = newIntensity;
+            }
+
+            for (let u = 0; u < updatesAfterTraining; u++) {
                 currentTS = this.simulator.applyDailyUpdate(currentTS);
             }
         }
@@ -204,6 +240,8 @@ class SeasonApp {
         this.schedule.forEach(match => {
             if (!match.venue) match.venue = 'AWAY';
             if (!match.tactic) match.tactic = 'NORMAL';
+            if (match.day === 'Tue' && match.trainingIntensity === undefined) match.trainingIntensity = 100;
+            if (match.day === 'Sat' && match.trainingIntensity !== undefined) delete match.trainingIntensity;
         });
     }
 
@@ -252,6 +290,33 @@ const domEls = {
     reset: document.getElementById('btnReset'),
     tbody: document.getElementById('scheduleTableBody')
 };
+
+function updateCalculatedData() {
+    const results = app.runSimulation();
+    const rows = domEls.tbody.querySelectorAll('tr');
+    results.forEach((match, idx) => {
+        if (rows[idx]) {
+            const preCell = rows[idx].querySelector('.cell-pre-ts');
+            const midCell = rows[idx].querySelector('.cell-midfield');
+            const postCell = rows[idx].querySelector('.cell-post-ts');
+            const boostCell = rows[idx].querySelector('.cell-boosted-ts');
+            if (preCell) preCell.textContent = match.preMatchTS;
+            if (midCell) midCell.innerHTML = `<strong>${match.midfieldRating}</strong>`;
+            if (postCell) postCell.textContent = match.postMatchTS;
+            
+            if (boostCell) {
+                if (match.boostedTS) {
+                    const color = match.boostDirection === 'up' ? '#388e3c' : '#d32f2f';
+                    boostCell.innerHTML = `=> <strong>${match.boostedTS.toFixed(2)}</strong>`;
+                    boostCell.style.cssText = `display: inline-block; width: 55px; text-align: left; font-size: 0.9em; color: ${color}; margin-left: 6px;`;
+                } else {
+                    boostCell.innerHTML = '';
+                    boostCell.style.cssText = `display: inline-block; width: 55px; margin-left: 6px;`;
+                }
+            }
+        }
+    });
+}
 
 function renderUI() {
     domEls.coach.value = app.settings.coachLeadership;
@@ -307,6 +372,20 @@ function renderUI() {
             </select>
         `;
 
+        let boostStyle = `display: inline-block; width: 55px; margin-left: 6px;`;
+        if (match.boostedTS) {
+            const color = match.boostDirection === 'up' ? '#388e3c' : '#d32f2f';
+            boostStyle = `display: inline-block; width: 55px; text-align: left; font-size: 0.9em; color: ${color}; margin-left: 6px;`;
+        }
+
+        const trainingInput = match.day === 'Tue' ? `
+            <div style="display: flex; align-items: center; justify-content: center; gap: 4px;">
+                <input type="range" class="match-training-slider" data-idx="${idx}" value="${match.trainingIntensity}" min="0" max="100" step="1" style="width: 50px;">
+                <input type="number" class="match-training-number" data-idx="${idx}" value="${match.trainingIntensity}" min="0" max="100" step="1" style="width: 50px; text-align: center;">
+                <span class="cell-boosted-ts" style="${boostStyle}" title="Thursday Boosted TS">${match.boostedTS ? `=> <strong>${match.boostedTS.toFixed(2)}</strong>` : ''}</span>
+            </div>
+        ` : '<span style="color: #999;">-</span>';
+
         tr.innerHTML = `
             <td>${match.week}</td>
             <td>${match.day}</td>
@@ -315,9 +394,10 @@ function renderUI() {
             <td>${venueSelect}</td>
             <td>${tacticSelect}</td>
             <td>${attitudeSelect}</td>
-            <td>${match.preMatchTS}</td>
-            <td><strong>${match.midfieldRating}</strong></td>
-            <td>${match.postMatchTS}</td>
+            <td class="cell-pre-ts">${match.preMatchTS}</td>
+            <td class="cell-midfield"><strong>${match.midfieldRating}</strong></td>
+            <td class="cell-post-ts">${match.postMatchTS}</td>
+            <td>${trainingInput}</td>
         `;
         domEls.tbody.appendChild(tr);
     });
@@ -350,6 +430,46 @@ function attachTableListeners() {
     document.querySelectorAll('.match-attitude').forEach(sel => {
         sel.addEventListener('change', (e) => {
             app.updateMatch(e.target.dataset.idx, 'attitude', e.target.value);
+            renderUI();
+        });
+    });
+
+    document.querySelectorAll('.match-training-slider').forEach(inp => {
+        inp.addEventListener('input', (e) => {
+            e.target.nextElementSibling.value = e.target.value;
+            let val = parseInt(e.target.value, 10);
+            if (!isNaN(val)) {
+                if (val < 0) val = 0;
+                if (val > 100) val = 100;
+                app.schedule[e.target.dataset.idx].trainingIntensity = val;
+                updateCalculatedData();
+            }
+        });
+        inp.addEventListener('change', (e) => {
+            let val = parseInt(e.target.value, 10);
+            if (isNaN(val) || val < 0) val = 0;
+            if (val > 100) val = 100;
+            app.updateMatch(e.target.dataset.idx, 'trainingIntensity', val);
+            renderUI();
+        });
+    });
+
+    document.querySelectorAll('.match-training-number').forEach(inp => {
+        inp.addEventListener('input', (e) => {
+            e.target.previousElementSibling.value = e.target.value;
+            let val = parseInt(e.target.value, 10);
+            if (!isNaN(val)) {
+                if (val < 0) val = 0;
+                if (val > 100) val = 100;
+                app.schedule[e.target.dataset.idx].trainingIntensity = val;
+                updateCalculatedData();
+            }
+        });
+        inp.addEventListener('change', (e) => {
+            let val = parseInt(e.target.value, 10);
+            if (isNaN(val) || val < 0) val = 0;
+            if (val > 100) val = 100;
+            app.updateMatch(e.target.dataset.idx, 'trainingIntensity', val);
             renderUI();
         });
     });
