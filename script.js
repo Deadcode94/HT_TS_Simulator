@@ -1,9 +1,8 @@
 // --- MATHEMATICAL LOGIC ---
 class TeamSpiritSimulator {
-    constructor(coachLeadership, psychologistLevel = 0, calculationMethod = 'piecewise') {
+    constructor(coachLeadership, psychologistLevel = 0) {
         this.coachLeadership = coachLeadership;
         this.psychologistLevel = psychologistLevel;
-        this.calculationMethod = calculationMethod;
         
         // Base TS effect on Midfield (Equivalent to NORMAL attitude)
         this.baseTsModifiers = {
@@ -31,28 +30,9 @@ class TeamSpiritSimulator {
         return Math.min(10.0, Math.max(0.0, postMatchTS));
     }
 
+    // Daily decay uses Piecewise Linear Decay (Lokes Table)
+    // Rising TS uses the asymptotic formula
     applyDailyUpdate(currentTS) {
-        if (this.calculationMethod === 'asymptotic') {
-            return this.applyDailyUpdateAsymptotic(currentTS);
-        } else {
-            return this.applyDailyUpdatePiecewise(currentTS);
-        }
-    }
-
-    // Old Hattrick Organizer Method
-    applyDailyUpdateAsymptotic(currentTS) {
-        const target = this.getTargetSpirit();
-        let newTS = currentTS;
-        if (currentTS >= target) {
-            newTS *= 1.0 - (((currentTS - target) / (this.coachLeadership / 3.0)) / 100.0);
-        } else {
-            newTS *= 1.0 + (((target - currentTS) * (this.coachLeadership / 2.0)) / 100.0);
-        }
-        return newTS;
-    }
-
-    // New Piecewise Linear Decay (Lokes Table)
-    applyDailyUpdatePiecewise(currentTS) {
         const target = this.getTargetSpirit();
         if (Math.abs(currentTS - target) < 0.001) return target;
 
@@ -201,7 +181,6 @@ class SeasonApp {
         this.defaultSettings = {
             coachLeadership: 6,
             psychologistLevel: 0,
-            tsCalculationMethod: 'piecewise',
             baseMidfieldRating: 10.0
         };
         this.settings = { ...this.defaultSettings };
@@ -222,8 +201,6 @@ class SeasonApp {
     }
     
     ensureNewPropertiesExist() {
-        if (!this.settings.tsCalculationMethod) this.settings.tsCalculationMethod = 'piecewise';
-        
         this.schedule.forEach(match => {
             if (!match.venue) match.venue = 'AWAY';
             if (!match.tactic) match.tactic = 'NORMAL';
@@ -232,9 +209,8 @@ class SeasonApp {
 
     instantiateController() {
         const sim = new TeamSpiritSimulator(
-            Number(this.settings.coachLeadership), 
-            Number(this.settings.psychologistLevel), 
-            this.settings.tsCalculationMethod
+            Number(this.settings.coachLeadership),
+            Number(this.settings.psychologistLevel)
         );
         this.controller = new SeasonController(sim);
     }
@@ -273,7 +249,6 @@ const domEls = {
     coach: document.getElementById('coachLeadership'),
     psychologist: document.getElementById('psychologistLevel'),
     midfield: document.getElementById('baseMidfieldRating'),
-    algorithm: document.getElementById('tsCalculationMethod'),
     reset: document.getElementById('btnReset'),
     tbody: document.getElementById('scheduleTableBody')
 };
@@ -282,7 +257,6 @@ function renderUI() {
     domEls.coach.value = app.settings.coachLeadership;
     domEls.psychologist.value = app.settings.psychologistLevel;
     domEls.midfield.value = app.settings.baseMidfieldRating;
-    domEls.algorithm.value = app.settings.tsCalculationMethod;
 
     const results = app.runSimulation();
     domEls.tbody.innerHTML = '';
@@ -384,7 +358,6 @@ function attachTableListeners() {
 domEls.coach.addEventListener('change', (e) => { app.updateSetting('coachLeadership', e.target.value); renderUI(); });
 domEls.psychologist.addEventListener('change', (e) => { app.updateSetting('psychologistLevel', e.target.value); renderUI(); });
 domEls.midfield.addEventListener('change', (e) => { app.updateSetting('baseMidfieldRating', e.target.value); renderUI(); });
-domEls.algorithm.addEventListener('change', (e) => { app.updateSetting('tsCalculationMethod', e.target.value); renderUI(); });
 
 domEls.reset.addEventListener('click', () => {
     if(confirm("Are you sure you want to reset all data?")) {
