@@ -1,9 +1,8 @@
 // --- MATHEMATICAL LOGIC ---
 class TeamSpiritSimulator {
-    constructor(coachLeadership, psychologistLevel = 0, isNationalTeam = false, calculationMethod = 'piecewise') {
+    constructor(coachLeadership, psychologistLevel = 0, calculationMethod = 'piecewise') {
         this.coachLeadership = coachLeadership;
         this.psychologistLevel = psychologistLevel;
-        this.isNationalTeam = isNationalTeam;
         this.calculationMethod = calculationMethod;
         
         // Base TS effect on Midfield (Equivalent to NORMAL attitude)
@@ -22,7 +21,6 @@ class TeamSpiritSimulator {
 
     getTargetSpirit() {
         let target = 4.5 + (this.psychologistLevel / 10.0);
-        if (this.isNationalTeam) target += 0.5;
         return target;
     }
 
@@ -203,10 +201,8 @@ class SeasonApp {
         this.defaultSettings = {
             coachLeadership: 6,
             psychologistLevel: 0,
-            isNationalTeam: false,
             tsCalculationMethod: 'piecewise',
-            baseMidfieldRating: 10.0,
-            initialTS: 4.5
+            baseMidfieldRating: 10.0
         };
         this.settings = { ...this.defaultSettings };
         this.schedule = [];
@@ -238,7 +234,6 @@ class SeasonApp {
         const sim = new TeamSpiritSimulator(
             Number(this.settings.coachLeadership), 
             Number(this.settings.psychologistLevel), 
-            this.settings.isNationalTeam,
             this.settings.tsCalculationMethod
         );
         this.controller = new SeasonController(sim);
@@ -263,9 +258,8 @@ class SeasonApp {
 
     runSimulation() {
         this.instantiateController();
-        const startingTS = this.settings.isNationalTeam ? 5.0 : 4.5;
         return this.controller.simulateSeason(
-            startingTS, 
+            4.5, 
             Number(this.settings.baseMidfieldRating), 
             this.schedule
         );
@@ -279,7 +273,6 @@ const domEls = {
     coach: document.getElementById('coachLeadership'),
     psychologist: document.getElementById('psychologistLevel'),
     midfield: document.getElementById('baseMidfieldRating'),
-    national: document.getElementById('isNationalTeam'),
     algorithm: document.getElementById('tsCalculationMethod'),
     reset: document.getElementById('btnReset'),
     tbody: document.getElementById('scheduleTableBody')
@@ -289,7 +282,6 @@ function renderUI() {
     domEls.coach.value = app.settings.coachLeadership;
     domEls.psychologist.value = app.settings.psychologistLevel;
     domEls.midfield.value = app.settings.baseMidfieldRating;
-    domEls.national.checked = app.settings.isNationalTeam;
     domEls.algorithm.value = app.settings.tsCalculationMethod;
 
     const results = app.runSimulation();
@@ -392,7 +384,6 @@ function attachTableListeners() {
 domEls.coach.addEventListener('change', (e) => { app.updateSetting('coachLeadership', e.target.value); renderUI(); });
 domEls.psychologist.addEventListener('change', (e) => { app.updateSetting('psychologistLevel', e.target.value); renderUI(); });
 domEls.midfield.addEventListener('change', (e) => { app.updateSetting('baseMidfieldRating', e.target.value); renderUI(); });
-domEls.national.addEventListener('change', (e) => { app.updateSetting('isNationalTeam', e.target.checked); renderUI(); });
 domEls.algorithm.addEventListener('change', (e) => { app.updateSetting('tsCalculationMethod', e.target.value); renderUI(); });
 
 domEls.reset.addEventListener('click', () => {
