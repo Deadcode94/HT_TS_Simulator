@@ -1,8 +1,9 @@
 // --- MATHEMATICAL LOGIC ---
 class TeamSpiritSimulator {
-    constructor(coachLeadership, psychologistLevel = 0) {
+    constructor(coachLeadership, psychologistLevel = 0, decayMethod = 'lokes') {
         this.coachLeadership = coachLeadership;
         this.psychologistLevel = psychologistLevel;
+        this.decayMethod = decayMethod;
         
         // Base TS effect on Midfield (Equivalent to NORMAL attitude)
         this.baseTsModifiers = {
@@ -48,6 +49,14 @@ class TeamSpiritSimulator {
     applyDailyUpdate(currentTS) {
         const target = this.getTargetSpirit();
         if (Math.abs(currentTS - target) < 0.001) return target;
+
+        if (this.decayMethod === 'asymptotic') {
+            // Unified smooth asymptotic formula for both rising and falling TS
+            // A Solid coach (7) retains ~93% of the difference, Passable (6) retains ~91%
+            const retentionFactor = 0.79 + (this.coachLeadership * 0.02);
+            let newTS = target + (currentTS - target) * retentionFactor;
+            return Math.min(10.0, Math.max(0.0, newTS));
+        }
 
         if (currentTS > target) {
             // Clean up precision dust (e.g., 9.00000001 or 8.99999 become exactly 9)
@@ -175,10 +184,7 @@ class SeasonController {
             // --- Post-Match Timeline to Next Match ---
             if (match.day === 'Tue') {
                 // Tuesday to Saturday interval
-                // 1. Thursday 04:30 update (1 update before training)
-                currentTS = this.simulator.applyDailyUpdate(currentTS);
-
-                // 2. Training Event (Intensity change applied before Thu 23:45)
+                // 1. Training Event (Intensity change applied right before Thu 04:30 update)
                 let newIntensity = match.trainingIntensity !== undefined ? Number(match.trainingIntensity) : currentIntensity;
                 if (newIntensity !== currentIntensity) {
                     const tsBeforeBoost = currentTS;
@@ -188,8 +194,8 @@ class SeasonController {
                     currentIntensity = newIntensity;
                 }
 
-                // 3. Remaining updates: Thu 23:45, Fri 12:00, Sat 02:00 (3 updates after training)
-                for (let u = 0; u < 3; u++) {
+                // 2. Remaining updates: Thu 04:30, Thu 23:45, Fri 12:00, Sat 02:00 (4 updates after training)
+                for (let u = 0; u < 4; u++) {
                     currentTS = this.simulator.applyDailyUpdate(currentTS);
                 }
             } else {
@@ -218,7 +224,8 @@ class SeasonApp {
         this.defaultSettings = {
             coachLeadership: 6,
             psychologistLevel: 0,
-            baseMidfieldRating: 10.0
+            baseMidfieldRating: 10.0,
+            decayMethod: 'lokes'
         };
         this.settings = { ...this.defaultSettings };
         this.schedule = [];
@@ -238,6 +245,7 @@ class SeasonApp {
     }
     
     ensureNewPropertiesExist() {
+        if (!this.settings.decayMethod) this.settings.decayMethod = 'lokes';
         this.schedule.forEach(match => {
             if (!match.venue) match.venue = 'AWAY';
             if (!match.tactic) match.tactic = 'NORMAL';
@@ -249,7 +257,8 @@ class SeasonApp {
     instantiateController() {
         const sim = new TeamSpiritSimulator(
             Number(this.settings.coachLeadership),
-            Number(this.settings.psychologistLevel)
+            Number(this.settings.psychologistLevel),
+            this.settings.decayMethod
         );
         this.controller = new SeasonController(sim);
     }
@@ -288,6 +297,7 @@ const domEls = {
     coach: document.getElementById('coachLeadership'),
     psychologist: document.getElementById('psychologistLevel'),
     midfield: document.getElementById('baseMidfieldRating'),
+    decayMethod: document.getElementById('decayMethod'),
     reset: document.getElementById('btnReset'),
     tbody: document.getElementById('scheduleTableBody')
 };
@@ -323,6 +333,7 @@ function renderUI() {
     domEls.coach.value = app.settings.coachLeadership;
     domEls.psychologist.value = app.settings.psychologistLevel;
     domEls.midfield.value = app.settings.baseMidfieldRating;
+    if (domEls.decayMethod) domEls.decayMethod.value = app.settings.decayMethod;
 
     const results = app.runSimulation();
     domEls.tbody.innerHTML = '';
@@ -479,6 +490,7 @@ function attachTableListeners() {
 domEls.coach.addEventListener('change', (e) => { app.updateSetting('coachLeadership', e.target.value); renderUI(); });
 domEls.psychologist.addEventListener('change', (e) => { app.updateSetting('psychologistLevel', e.target.value); renderUI(); });
 domEls.midfield.addEventListener('change', (e) => { app.updateSetting('baseMidfieldRating', e.target.value); renderUI(); });
+if (domEls.decayMethod) domEls.decayMethod.addEventListener('change', (e) => { app.updateSetting('decayMethod', e.target.value); renderUI(); });
 
 domEls.reset.addEventListener('click', () => {
     if(confirm("Are you sure you want to reset all data?")) {

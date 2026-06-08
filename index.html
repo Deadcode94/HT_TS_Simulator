@@ -26,6 +26,13 @@
                 <input type="number" id="baseMidfieldRating" step="0.1" value="10.0">
             </div>
             <div class="form-group">
+                <label for="decayMethod">TS Decay Method</label>
+                <select id="decayMethod">
+                    <option value="lokes">Classic Lokes (Discrete)</option>
+                    <option value="asymptotic">Asymptotic (Smooth - testing)</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <button id="btnReset" class="btn-reset">Reset Season</button>
             </div>
             <div class="form-group">
