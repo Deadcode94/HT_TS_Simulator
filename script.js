@@ -138,7 +138,6 @@ class SeasonController {
 
         for (let i = 0; i < scheduleConfig.length; i++) {
             const match = scheduleConfig[i];
-            const updatesToNext = match.day === 'Tue' ? this.updatesBetweenTueAndSat : this.updatesBetweenSatAndTue;
             
             let effectivelyActive = match.isActive;
             let cupEliminatedBefore = false;
@@ -173,30 +172,32 @@ class SeasonController {
                 postMatchTS: parseFloat(postMatchTS.toFixed(2))
             });
 
-            // Calculate precise timing of the training update
-            let updatesBeforeTraining = 0;
-            let updatesAfterTraining = updatesToNext;
-
+            // --- Post-Match Timeline to Next Match ---
             if (match.day === 'Tue') {
-                updatesBeforeTraining = 0; // Training boost acts directly on the post-match TS 
-                updatesAfterTraining = 3;  // The TS boost suffers exactly 3 drops before the Sat match
-            }
-
-            for (let u = 0; u < updatesBeforeTraining; u++) {
+                // Tuesday to Saturday interval
+                // 1. Thursday 04:30 update (1 update before training)
                 currentTS = this.simulator.applyDailyUpdate(currentTS);
-            }
 
-            let newIntensity = match.trainingIntensity !== undefined ? Number(match.trainingIntensity) : currentIntensity;
-            if (newIntensity !== currentIntensity) {
-                const tsBeforeBoost = currentTS;
-                currentTS = this.simulator.applyTrainingIntensityChange(currentTS, currentIntensity, newIntensity);
-                results[results.length - 1].boostedTS = currentTS;
-                results[results.length - 1].boostDirection = currentTS > tsBeforeBoost ? 'up' : 'down';
-                currentIntensity = newIntensity;
-            }
+                // 2. Training Event (Intensity change applied before Thu 23:45)
+                let newIntensity = match.trainingIntensity !== undefined ? Number(match.trainingIntensity) : currentIntensity;
+                if (newIntensity !== currentIntensity) {
+                    const tsBeforeBoost = currentTS;
+                    currentTS = this.simulator.applyTrainingIntensityChange(currentTS, currentIntensity, newIntensity);
+                    results[results.length - 1].boostedTS = currentTS;
+                    results[results.length - 1].boostDirection = currentTS > tsBeforeBoost ? 'up' : 'down';
+                    currentIntensity = newIntensity;
+                }
 
-            for (let u = 0; u < updatesAfterTraining; u++) {
-                currentTS = this.simulator.applyDailyUpdate(currentTS);
+                // 3. Remaining updates: Thu 23:45, Fri 12:00, Sat 02:00 (3 updates after training)
+                for (let u = 0; u < 3; u++) {
+                    currentTS = this.simulator.applyDailyUpdate(currentTS);
+                }
+            } else {
+                // Saturday to Tuesday interval
+                // Updates: Mon 04:30, Mon 23:00, Tue 02:00 (3 updates)
+                for (let u = 0; u < this.updatesBetweenSatAndTue; u++) {
+                    currentTS = this.simulator.applyDailyUpdate(currentTS);
+                }
             }
         }
         return results;
