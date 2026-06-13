@@ -28,7 +28,7 @@ class TeamSpiritSimulator {
         let postMatchTS = preMatchTS;
         if (attitude === 'PIC') postMatchTS = preMatchTS * (1.0 + (1.0 / 3.0));
         else if (attitude === 'MOTS') postMatchTS = preMatchTS / 2.0;
-        return Math.min(10.0, Math.max(0.0, postMatchTS));
+        return Math.min(12.0, Math.max(0.0, postMatchTS));
     }
 
     // Apply TS effect from changing training intensity (e.g., dropping before a final)
@@ -41,7 +41,7 @@ class TeamSpiritSimulator {
         
         // Match the exact precision rounding of external tools
         newTS = parseFloat(newTS.toFixed(2));
-        return Math.min(10.0, Math.max(0.0, newTS));
+        return Math.min(12.0, Math.max(0.0, newTS));
     }
 
     // Daily decay uses Piecewise Linear Decay (Lokes Table)
@@ -170,7 +170,7 @@ class SeasonController {
                 baseMidfieldRating, preMatchTS, effectiveAttitude, match.venue, match.tactic
             );
             currentTS = this.simulator.applyMatchEffect(preMatchTS, effectiveAttitude);
-            const postMatchTS = currentTS;
+            const postMatchTS = Math.min(10.0, currentTS);
 
             results.push({
                 ...match,
@@ -186,13 +186,19 @@ class SeasonController {
                 // Tuesday to Saturday interval
                 // 1. Training Event (Intensity change applied right before Thu 04:30 update)
                 let newIntensity = match.trainingIntensity !== undefined ? Number(match.trainingIntensity) : currentIntensity;
+                const tsBeforeBoost = currentTS;
+
                 if (newIntensity !== currentIntensity) {
-                    const tsBeforeBoost = currentTS;
                     currentTS = this.simulator.applyTrainingIntensityChange(currentTS, currentIntensity, newIntensity);
-                    results[results.length - 1].boostedTS = currentTS;
-                    results[results.length - 1].boostDirection = currentTS > tsBeforeBoost ? 'up' : 'down';
                     currentIntensity = newIntensity;
                 }
+                
+                results[results.length - 1].preBoostTS = tsBeforeBoost;
+                results[results.length - 1].boostedTS = currentTS;
+                results[results.length - 1].boostDirection = currentTS > tsBeforeBoost ? 'up' : (currentTS < tsBeforeBoost ? 'down' : 'none');
+
+                // First update caps TS at 10
+                currentTS = Math.min(10.0, currentTS);
 
                 // 2. Remaining updates: Thu 04:30, Thu 23:45, Fri 12:00, Sat 02:00 (4 updates after training)
                 for (let u = 0; u < 4; u++) {
@@ -200,6 +206,7 @@ class SeasonController {
                 }
             } else {
                 // Saturday to Tuesday interval
+                currentTS = Math.min(10.0, currentTS);
                 // Updates: Mon 04:30, Mon 23:00, Tue 02:00 (3 updates)
                 for (let u = 0; u < this.updatesBetweenSatAndTue; u++) {
                     currentTS = this.simulator.applyDailyUpdate(currentTS);
@@ -316,13 +323,13 @@ function updateCalculatedData() {
             if (postCell) postCell.textContent = match.postMatchTS;
             
             if (boostCell) {
-                if (match.boostedTS) {
-                    const color = match.boostDirection === 'up' ? '#388e3c' : '#d32f2f';
-                    boostCell.innerHTML = `=> <strong>${match.boostedTS.toFixed(2)}</strong>`;
-                    boostCell.style.cssText = `display: inline-block; width: 55px; text-align: left; font-size: 0.9em; color: ${color}; margin-left: 6px;`;
+                if (match.preBoostTS !== undefined && match.boostedTS !== undefined) {
+                    const color = match.boostDirection === 'up' ? '#388e3c' : (match.boostDirection === 'down' ? '#d32f2f' : 'inherit');
+                    boostCell.innerHTML = `${match.preBoostTS.toFixed(2)} => <strong style="color: ${color}">${match.boostedTS.toFixed(2)}</strong>`;
+                    boostCell.style.cssText = `display: inline-block; width: 110px; text-align: left; font-size: 0.9em; margin-left: 6px;`;
                 } else {
                     boostCell.innerHTML = '';
-                    boostCell.style.cssText = `display: inline-block; width: 55px; margin-left: 6px;`;
+                    boostCell.style.cssText = `display: inline-block; width: 110px; margin-left: 6px;`;
                 }
             }
         }
@@ -384,17 +391,19 @@ function renderUI() {
             </select>
         `;
 
-        let boostStyle = `display: inline-block; width: 55px; margin-left: 6px;`;
-        if (match.boostedTS) {
-            const color = match.boostDirection === 'up' ? '#388e3c' : '#d32f2f';
-            boostStyle = `display: inline-block; width: 55px; text-align: left; font-size: 0.9em; color: ${color}; margin-left: 6px;`;
+        let boostStyle = `display: inline-block; width: 110px; margin-left: 6px;`;
+        let boostHtml = '';
+        if (match.preBoostTS !== undefined && match.boostedTS !== undefined) {
+            const color = match.boostDirection === 'up' ? '#388e3c' : (match.boostDirection === 'down' ? '#d32f2f' : 'inherit');
+            boostHtml = `${match.preBoostTS.toFixed(2)} => <strong style="color: ${color}">${match.boostedTS.toFixed(2)}</strong>`;
+            boostStyle = `display: inline-block; width: 110px; text-align: left; font-size: 0.9em; margin-left: 6px;`;
         }
 
         const trainingInput = match.day === 'Tue' ? `
             <div style="display: flex; align-items: center; justify-content: center; gap: 4px;">
                 <input type="range" class="match-training-slider" data-idx="${idx}" value="${match.trainingIntensity}" min="1" max="100" step="1" style="width: 50px;">
                 <input type="number" class="match-training-number" data-idx="${idx}" value="${match.trainingIntensity}" min="1" max="100" step="1" style="width: 50px; text-align: center;">
-                <span class="cell-boosted-ts" style="${boostStyle}" title="Thursday Boosted TS">${match.boostedTS ? `=> <strong>${match.boostedTS.toFixed(2)}</strong>` : ''}</span>
+                <span class="cell-boosted-ts" style="${boostStyle}" title="Thursday Boosted TS">${boostHtml}</span>
             </div>
         ` : '<span style="color: #999;">-</span>';
 
