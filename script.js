@@ -72,20 +72,45 @@ class TeamSpiritSimulator {
             const dropRates = {
                 7: { 9: 1/3, 8: 1/5, 7: 1/7, 6: 1/13, 5: 1/33, 4: 1/35 },
                 6: { 9: 1/3, 8: 1/5, 7: 1/7, 6: 1/13, 5: 1/33, 4: 1/35 },
-                5: { 9: 1/2, 8: 1/4, 7: 1/6, 6: 1/10,  5: 1/26, 4: 1/30 },
-                4: { 9: 1/1, 8: 1/3, 7: 1/5, 6: 1/7,  5: 1/20,  4: 1/25 },
-                3: { 9: 1/1, 8: 1/2, 7: 1/2, 6: 1/5,  5: 1/13,  4: 1/15 },
+                5: { 9: 1/2, 8: 1/4, 7: 1/6, 6: 1/10, 5: 1/26, 4: 1/30 },
+                4: { 9: 1/1, 8: 1/3, 7: 1/5, 6: 1/7,  5: 1/20, 4: 1/25 },
+                3: { 9: 1/1, 8: 1/2, 7: 1/2, 6: 1/5,  5: 1/13, 4: 1/15 },
                 2: { 9: 1/1, 8: 1/1, 7: 1/1, 6: 1/2,  5: 1/6,  4: 1/10 },
                 1: { 9: 1/1, 8: 1/1, 7: 1/1, 6: 1/2,  5: 1/6,  4: 1/10 }
             };
             
             let drop = dropRates[this.coachLeadership]?.[bucket] || 0.1;
             return Math.max(target, currentTS - drop);
-        } else {
+        } else if (currentTS < target) {
             // Rising TS (when currentTS < target) 
-            // Since the Lokes table doesn't map rises, we safely use the old asymptotic rise formula
-            let newTS = currentTS * (1.0 + (((target - currentTS) * (this.coachLeadership / 2.0)) / 100.0));
-            return Math.min(target, newTS);
+            
+            // Preserved old asymptotic rise formula (can be toggled if needed):
+            // if (this.decayMethod === 'lokes_old_rise') {
+            //     let newTS = currentTS * (1.0 + (((target - currentTS) * (this.coachLeadership / 2.0)) / 100.0));
+            //     return Math.min(target, newTS);
+            // }
+
+            const cleanTS = parseFloat(currentTS.toFixed(4));
+            let bucket = Math.floor(cleanTS);
+            
+            if (bucket >= 4) bucket = 4;
+            if (bucket <= 0) bucket = 0;
+
+            // Note: Leadership 7 exact fractions derived from IanMajor's NT table.
+            // Other leadership levels extrapolated by grouping (7&6, 2&1) and scaling denominators, 
+            // mimicking the structure and logic of the dropRates table.
+            const riseRates = {
+                7: { 0: 3/4, 1: 7/20, 2: 1/5,  3: 1/10, 4: 1/20 },
+                6: { 0: 3/4, 1: 7/20, 2: 1/5,  3: 1/10, 4: 1/20 },
+                5: { 0: 2/3, 1: 1/4,  2: 1/6,  3: 1/12, 4: 1/25 },
+                4: { 0: 1/2, 1: 1/5,  2: 1/7,  3: 1/15, 4: 1/30 },
+                3: { 0: 1/3, 1: 1/6,  2: 1/9,  3: 1/18, 4: 1/35 },
+                2: { 0: 1/4, 1: 1/8,  2: 1/12, 3: 1/22, 4: 1/40 },
+                1: { 0: 1/4, 1: 1/8,  2: 1/12, 3: 1/22, 4: 1/40 }
+            };
+            
+            let rise = riseRates[this.coachLeadership]?.[bucket] || 0.1;
+            return Math.min(target, currentTS + rise);
         }
     }
 
