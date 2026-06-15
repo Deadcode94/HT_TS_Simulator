@@ -17,6 +17,26 @@ class TeamSpiritSimulator {
             venue: { HOME: 1.19892, AWAY: 1.0, DERBY_AWAY: 1.11493 },
             tactic: { NORMAL: 1.0, CA: 0.93 }
         };
+
+        this.dropRates = {
+            7: { 9: 1/3, 8: 1/5, 7: 1/7, 6: 1/13, 5: 1/33, 4: 1/35 },
+            6: { 9: 1/3, 8: 1/5, 7: 1/7, 6: 1/13, 5: 1/33, 4: 1/35 },
+            5: { 9: 1/2, 8: 1/4, 7: 1/6, 6: 1/10, 5: 1/26, 4: 1/30 },
+            4: { 9: 1/1, 8: 1/3, 7: 1/5, 6: 1/7,  5: 1/20, 4: 1/25 },
+            3: { 9: 1/1, 8: 1/2, 7: 1/2, 6: 1/5,  5: 1/13, 4: 1/15 },
+            2: { 9: 1/1, 8: 1/1, 7: 1/1, 6: 1/2,  5: 1/6,  4: 1/10 },
+            1: { 9: 1/1, 8: 1/1, 7: 1/1, 6: 1/2,  5: 1/6,  4: 1/10 }
+        };
+
+        this.riseRates = {
+            7: { 0: 3/4, 1: 7/20, 2: 1/5,  3: 1/10, 4: 1/20 },
+            6: { 0: 3/4, 1: 7/20, 2: 1/5,  3: 1/10, 4: 1/20 },
+            5: { 0: 2/3, 1: 1/4,  2: 1/6,  3: 1/12, 4: 1/25 },
+            4: { 0: 1/2, 1: 1/5,  2: 1/7,  3: 1/15, 4: 1/30 },
+            3: { 0: 1/3, 1: 1/6,  2: 1/9,  3: 1/18, 4: 1/35 },
+            2: { 0: 1/4, 1: 1/8,  2: 1/12, 3: 1/22, 4: 1/40 },
+            1: { 0: 1/4, 1: 1/8,  2: 1/12, 3: 1/22, 4: 1/40 }
+        };
     }
 
     getTargetSpirit() {
@@ -69,17 +89,7 @@ class TeamSpiritSimulator {
             if (bucket >= 9) bucket = 9;
             if (bucket < 4) bucket = 4; // Bounding at 4 since TS never drops below 4.5 in this block
             
-            const dropRates = {
-                7: { 9: 1/3, 8: 1/5, 7: 1/7, 6: 1/13, 5: 1/33, 4: 1/35 },
-                6: { 9: 1/3, 8: 1/5, 7: 1/7, 6: 1/13, 5: 1/33, 4: 1/35 },
-                5: { 9: 1/2, 8: 1/4, 7: 1/6, 6: 1/10, 5: 1/26, 4: 1/30 },
-                4: { 9: 1/1, 8: 1/3, 7: 1/5, 6: 1/7,  5: 1/20, 4: 1/25 },
-                3: { 9: 1/1, 8: 1/2, 7: 1/2, 6: 1/5,  5: 1/13, 4: 1/15 },
-                2: { 9: 1/1, 8: 1/1, 7: 1/1, 6: 1/2,  5: 1/6,  4: 1/10 },
-                1: { 9: 1/1, 8: 1/1, 7: 1/1, 6: 1/2,  5: 1/6,  4: 1/10 }
-            };
-            
-            let drop = dropRates[this.coachLeadership]?.[bucket] || 0.1;
+            let drop = this.dropRates[this.coachLeadership]?.[bucket] || 0.1;
             return Math.max(target, currentTS - drop);
         } else if (currentTS < target) {
             // Rising TS (when currentTS < target) 
@@ -99,17 +109,7 @@ class TeamSpiritSimulator {
             // Note: Leadership 7 exact fractions derived from IanMajor's NT table.
             // Other leadership levels extrapolated by grouping (7&6, 2&1) and scaling denominators, 
             // mimicking the structure and logic of the dropRates table.
-            const riseRates = {
-                7: { 0: 3/4, 1: 7/20, 2: 1/5,  3: 1/10, 4: 1/20 },
-                6: { 0: 3/4, 1: 7/20, 2: 1/5,  3: 1/10, 4: 1/20 },
-                5: { 0: 2/3, 1: 1/4,  2: 1/6,  3: 1/12, 4: 1/25 },
-                4: { 0: 1/2, 1: 1/5,  2: 1/7,  3: 1/15, 4: 1/30 },
-                3: { 0: 1/3, 1: 1/6,  2: 1/9,  3: 1/18, 4: 1/35 },
-                2: { 0: 1/4, 1: 1/8,  2: 1/12, 3: 1/22, 4: 1/40 },
-                1: { 0: 1/4, 1: 1/8,  2: 1/12, 3: 1/22, 4: 1/40 }
-            };
-            
-            let rise = riseRates[this.coachLeadership]?.[bucket] || 0.1;
+            let rise = this.riseRates[this.coachLeadership]?.[bucket] || 0.1;
             return Math.min(target, currentTS + rise);
         }
     }
@@ -334,6 +334,16 @@ const domEls = {
     tbody: document.getElementById('scheduleTableBody')
 };
 
+// Create Plot button dynamically if not present
+let btnPlot = document.getElementById('btnPlot');
+if (!btnPlot && domEls.reset) {
+    btnPlot = document.createElement('button');
+    btnPlot.id = 'btnPlot';
+    btnPlot.textContent = 'Plot TS Curves';
+    btnPlot.style.marginLeft = '10px';
+    domEls.reset.parentNode.insertBefore(btnPlot, domEls.reset.nextSibling);
+}
+
 function updateCalculatedData() {
     const results = app.runSimulation();
     const rows = domEls.tbody.querySelectorAll('tr');
@@ -533,6 +543,92 @@ domEls.reset.addEventListener('click', () => {
     }
 });
 
+if (btnPlot) {
+    btnPlot.addEventListener('click', () => {
+        if (!window.Chart) {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+            script.onload = () => plotTSCurves();
+            document.head.appendChild(script);
+        } else {
+            plotTSCurves();
+        }
+    });
+}
+
+function plotTSCurves() {
+    let container = document.getElementById('tsChartContainer');
+    const isDark = document.body.classList.contains('dark-mode');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'tsChartContainer';
+        container.style.cssText = `max-width: 800px; margin: 20px auto; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); background: ${isDark ? '#2d2d2d' : '#fff'};`;
+        
+        const canvas = document.createElement('canvas');
+        canvas.id = 'tsChart';
+        container.appendChild(canvas);
+        
+        const mainContent = document.querySelector('.container') || document.body;
+        mainContent.appendChild(container);
+    }
+
+    const ctx = document.getElementById('tsChart').getContext('2d');
+    const sim = new TeamSpiritSimulator(7, 0, 'lokes');
+    
+    const labels = [
+        '0-1', '1-2', '2-3', '3-4', '4-4.5 (Rise)', 
+        '4.5-5 (Drop)', '5-6', '6-7', '7-8', '8-9', '9-10'
+    ];
+    const datasets = [];
+    const colors = {
+        7: '#4CAF50', 6: '#8BC34A', 5: '#FFEB3B', 
+        4: '#FFC107', 3: '#FF9800', 2: '#FF5722', 1: '#F44336'
+    };
+    const leadershipLabels = {
+        7: 'Solid', 6: 'Passable', 5: 'Inadequate', 4: 'Weak',
+        3: 'Poor', 2: 'Wretched', 1: 'Disastrous'
+    };
+
+    for (let l = 7; l >= 1; l--) {
+        const data = [
+            sim.riseRates[l][0], sim.riseRates[l][1],
+            sim.riseRates[l][2], sim.riseRates[l][3],
+            sim.riseRates[l][4], -(sim.dropRates[l][4]),
+            -(sim.dropRates[l][5]), -(sim.dropRates[l][6]),
+            -(sim.dropRates[l][7]), -(sim.dropRates[l][8]),
+            -(sim.dropRates[l][9])
+        ];
+        datasets.push({
+            label: `Ld. ${l} (${leadershipLabels[l]})`,
+            data: data, borderColor: colors[l],
+            backgroundColor: colors[l], fill: false, tension: 0.1
+        });
+    }
+
+    if (window.tsChartInstance) {
+        window.tsChartInstance.destroy();
+    }
+
+    const textColor = isDark ? '#fff' : '#666';
+
+    window.tsChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: { labels: labels, datasets: datasets },
+        options: {
+            responsive: true,
+            plugins: {
+                title: { display: true, text: 'Team Spirit Daily Change by Leadership', color: textColor },
+                legend: { labels: { color: textColor } },
+                tooltip: { callbacks: { label: context => `${context.dataset.label}: ${context.parsed.y > 0 ? '+' : ''}${Number(context.parsed.y).toFixed(3)}` } }
+            },
+            scales: {
+                x: { title: { display: true, text: 'Team Spirit Bucket', color: textColor }, ticks: { color: textColor } },
+                y: { title: { display: true, text: 'Daily TS Change', color: textColor }, ticks: { color: textColor } }
+            }
+        }
+    });
+}
+
 renderUI();
 
 // --- THEME TOGGLE ---
@@ -550,4 +646,16 @@ btnThemeToggle.addEventListener('click', () => {
     const isDark = document.body.classList.contains('dark-mode');
     localStorage.setItem('ht_ts_theme', isDark ? 'dark' : 'light');
     btnThemeToggle.textContent = isDark ? '☀️ Light Mode' : '🌙 Dark Mode';
+    
+    if (window.tsChartInstance) {
+        const textColor = isDark ? '#fff' : '#666';
+        window.tsChartInstance.options.plugins.title.color = textColor;
+        window.tsChartInstance.options.plugins.legend.labels.color = textColor;
+        window.tsChartInstance.options.scales.x.title.color = textColor;
+        window.tsChartInstance.options.scales.x.ticks.color = textColor;
+        window.tsChartInstance.options.scales.y.title.color = textColor;
+        window.tsChartInstance.options.scales.y.ticks.color = textColor;
+        document.getElementById('tsChartContainer').style.background = isDark ? '#2d2d2d' : '#fff';
+        window.tsChartInstance.update();
+    }
 });
