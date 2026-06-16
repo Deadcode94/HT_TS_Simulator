@@ -334,14 +334,45 @@ const domEls = {
     tbody: document.getElementById('scheduleTableBody')
 };
 
-// Create Plot button dynamically if not present
-let btnPlot = document.getElementById('btnPlot');
-if (!btnPlot && domEls.reset) {
-    btnPlot = document.createElement('button');
-    btnPlot.id = 'btnPlot';
-    btnPlot.textContent = 'Plot TS Curves';
-    btnPlot.style.marginLeft = '10px';
-    domEls.reset.parentNode.insertBefore(btnPlot, domEls.reset.nextSibling);
+// Create TS Curves Collapsible Section dynamically
+let tsCurvesSection = document.getElementById('tsCurvesSection');
+if (!tsCurvesSection) {
+    const isDark = document.body.classList.contains('dark-mode');
+    tsCurvesSection = document.createElement('div');
+    tsCurvesSection.id = 'tsCurvesSection';
+    tsCurvesSection.style.cssText = `max-width: 800px; margin: 20px auto; border: 1px solid ${isDark ? '#444' : '#ccc'}; border-radius: 8px; overflow: hidden;`;
+    
+    const header = document.createElement('div');
+    header.id = 'tsCurvesHeader';
+    header.style.cssText = `padding: 10px 20px; background-color: ${isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)'}; cursor: pointer; font-weight: bold; display: flex; justify-content: space-between; align-items: center;`;
+    header.innerHTML = '<span>Plot TS Curves</span><span id="tsCurvesToggleIcon">▼</span>';
+    
+    const content = document.createElement('div');
+    content.id = 'tsCurvesContent';
+    content.style.cssText = 'display: none; padding: 20px;';
+    
+    tsCurvesSection.appendChild(header);
+    tsCurvesSection.appendChild(content);
+    
+    const mainContent = document.querySelector('.container') || document.body;
+    mainContent.appendChild(tsCurvesSection);
+
+    header.addEventListener('click', () => {
+        const isHidden = content.style.display === 'none';
+        content.style.display = isHidden ? 'block' : 'none';
+        document.getElementById('tsCurvesToggleIcon').textContent = isHidden ? '▲' : '▼';
+        
+        if (isHidden) {
+            if (!window.Chart) {
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+                script.onload = () => plotTSCurves();
+                document.head.appendChild(script);
+            } else {
+                plotTSCurves();
+            }
+        }
+    });
 }
 
 function updateCalculatedData() {
@@ -543,18 +574,6 @@ domEls.reset.addEventListener('click', () => {
     }
 });
 
-if (btnPlot) {
-    btnPlot.addEventListener('click', () => {
-        if (!window.Chart) {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
-            script.onload = () => plotTSCurves();
-            document.head.appendChild(script);
-        } else {
-            plotTSCurves();
-        }
-    });
-}
 
 function plotTSCurves() {
     let container = document.getElementById('tsChartContainer');
@@ -562,14 +581,31 @@ function plotTSCurves() {
     if (!container) {
         container = document.createElement('div');
         container.id = 'tsChartContainer';
-        container.style.cssText = `max-width: 800px; margin: 20px auto; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); background: ${isDark ? '#2d2d2d' : '#fff'};`;
+        container.style.cssText = `border-radius: 8px; background: ${isDark ? '#2d2d2d' : '#fff'};`;
         
         const canvas = document.createElement('canvas');
         canvas.id = 'tsChart';
         container.appendChild(canvas);
         
-        const mainContent = document.querySelector('.container') || document.body;
-        mainContent.appendChild(container);
+        document.getElementById('tsCurvesContent').appendChild(container);
+    }
+    
+    let valContainer = document.getElementById('tsValueChartContainer');
+    if (!valContainer) {
+        valContainer = document.createElement('div');
+        valContainer.id = 'tsValueChartContainer';
+        valContainer.style.cssText = `border-radius: 8px; background: ${isDark ? '#2d2d2d' : '#fff'}; margin-top: 20px;`;
+        const canvas2 = document.createElement('canvas');
+        canvas2.id = 'tsValueChart';
+        valContainer.appendChild(canvas2);
+        document.getElementById('tsCurvesContent').appendChild(valContainer);
+    }
+    let tableContainer = document.getElementById('tsValueTableContainer');
+    if (!tableContainer) {
+        tableContainer = document.createElement('div');
+        tableContainer.id = 'tsValueTableContainer';
+        tableContainer.style.cssText = `margin-top: 20px; max-height: 400px; overflow-y: auto; border: 1px solid ${isDark ? '#444' : '#ccc'}; border-radius: 8px;`;
+        document.getElementById('tsCurvesContent').appendChild(tableContainer);
     }
 
     const ctx = document.getElementById('tsChart').getContext('2d');
@@ -589,6 +625,15 @@ function plotTSCurves() {
         3: 'Poor', 2: 'Wretched', 1: 'Disastrous'
     };
 
+    const maxUpdates = 112; // Approx 1 season (16 weeks * 7 updates)
+    const labels2 = Array.from({length: maxUpdates + 1}, (_, i) => i);
+    const datasets2 = [];
+    const tableData = [];
+    
+    for (let i = 0; i <= maxUpdates; i++) {
+        tableData.push({ update: i, drop: {}, rise: {} });
+    }
+
     for (let l = 7; l >= 1; l--) {
         const data = [
             sim.riseRates[l][0], sim.riseRates[l][1],
@@ -603,6 +648,32 @@ function plotTSCurves() {
             data: data, borderColor: colors[l],
             backgroundColor: colors[l], fill: false, tension: 0.1
         });
+        
+        sim.coachLeadership = l;
+        let currentDrop = 10.0;
+        let currentRise = 0.0;
+        const dropData = [];
+        const riseData = [];
+        
+        for (let i = 0; i <= maxUpdates; i++) {
+            dropData.push(currentDrop);
+            riseData.push(currentRise);
+            
+            tableData[i].drop[l] = currentDrop.toFixed(2);
+            tableData[i].rise[l] = currentRise.toFixed(2);
+            
+            currentDrop = sim.applyDailyUpdate(currentDrop);
+            currentRise = sim.applyDailyUpdate(currentRise);
+        }
+        
+        datasets2.push({
+            label: `Ld. ${l} Drop`, data: dropData, borderColor: colors[l],
+            backgroundColor: colors[l], fill: false, tension: 0.1, borderDash: []
+        });
+        datasets2.push({
+            label: `Ld. ${l} Rise`, data: riseData, borderColor: colors[l],
+            backgroundColor: colors[l], fill: false, tension: 0.1, borderDash: [5, 5]
+        });
     }
 
     if (window.tsChartInstance) {
@@ -610,6 +681,7 @@ function plotTSCurves() {
     }
 
     const textColor = isDark ? '#fff' : '#666';
+    const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
 
     window.tsChartInstance = new Chart(ctx, {
         type: 'line',
@@ -617,16 +689,67 @@ function plotTSCurves() {
         options: {
             responsive: true,
             plugins: {
-                title: { display: true, text: 'Team Spirit Daily Change by Leadership', color: textColor },
+                title: { display: true, text: 'Team Spirit per Update Change by Leadership', color: textColor },
                 legend: { labels: { color: textColor } },
                 tooltip: { callbacks: { label: context => `${context.dataset.label}: ${context.parsed.y > 0 ? '+' : ''}${Number(context.parsed.y).toFixed(3)}` } }
             },
             scales: {
-                x: { title: { display: true, text: 'Team Spirit Bucket', color: textColor }, ticks: { color: textColor } },
-                y: { title: { display: true, text: 'Daily TS Change', color: textColor }, ticks: { color: textColor } }
+                x: { 
+                    title: { display: true, text: 'Team Spirit Bucket', color: textColor }, 
+                    ticks: { color: textColor },
+                    grid: { color: gridColor }
+                },
+                y: { 
+                    title: { display: true, text: 'TS Change per Update', color: textColor }, 
+                    ticks: { color: textColor },
+                    grid: { color: gridColor }
+                }
             }
         }
     });
+
+    const ctx2 = document.getElementById('tsValueChart').getContext('2d');
+    if (window.tsValueChartInstance) window.tsValueChartInstance.destroy();
+    
+    window.tsValueChartInstance = new Chart(ctx2, {
+        type: 'line',
+        data: { labels: labels2, datasets: datasets2 },
+        options: {
+            responsive: true,
+            plugins: {
+                title: { display: true, text: 'Actual TS Value over Update Events (1 Season = ~112 Updates)', color: textColor },
+                legend: { labels: { color: textColor } },
+                tooltip: { callbacks: { label: context => `${context.dataset.label}: ${Number(context.parsed.y).toFixed(2)}` } }
+            },
+            scales: {
+                x: { 
+                    title: { display: true, text: 'Updates', color: textColor }, 
+                    ticks: { color: textColor }, grid: { color: gridColor }
+                },
+                y: { 
+                    title: { display: true, text: 'TS Value', color: textColor }, 
+                    ticks: { color: textColor }, grid: { color: gridColor }
+                }
+            }
+        }
+    });
+
+    let tableHtml = `<table style="width: 100%; border-collapse: collapse; text-align: center; color: ${textColor}; font-size: 0.85em;">`;
+    tableHtml += `<thead><tr><th style="border-bottom: 1px solid ${gridColor}; padding: 4px; position: sticky; top: 0; background: ${isDark ? '#2d2d2d' : '#f9f9f9'}; z-index: 1;">Update</th>`;
+    for (let l = 7; l >= 1; l--) tableHtml += `<th style="border-bottom: 1px solid ${gridColor}; padding: 4px; position: sticky; top: 0; background: ${isDark ? '#2d2d2d' : '#f9f9f9'}; color: ${colors[l]}; z-index: 1;">Ld.${l} Drop</th>`;
+    for (let l = 7; l >= 1; l--) tableHtml += `<th style="border-bottom: 1px solid ${gridColor}; padding: 4px; position: sticky; top: 0; background: ${isDark ? '#2d2d2d' : '#f9f9f9'}; color: ${colors[l]}; z-index: 1;">Ld.${l} Rise</th>`;
+    tableHtml += `</tr></thead><tbody>`;
+    
+    tableData.forEach(row => {
+        tableHtml += `<tr><td style="border-bottom: 1px solid ${gridColor}; padding: 4px;"><strong>${row.update}</strong></td>`;
+        for (let l = 7; l >= 1; l--) tableHtml += `<td style="border-bottom: 1px solid ${gridColor}; padding: 4px;">${row.drop[l]}</td>`;
+        for (let l = 7; l >= 1; l--) tableHtml += `<td style="border-bottom: 1px solid ${gridColor}; padding: 4px;">${row.rise[l]}</td>`;
+        tableHtml += `</tr>`;
+    });
+    tableHtml += `</tbody></table>`;
+    
+    const tableContainerEl = document.getElementById('tsValueTableContainer');
+    if(tableContainerEl) tableContainerEl.innerHTML = tableHtml;
 }
 
 renderUI();
@@ -647,15 +770,56 @@ btnThemeToggle.addEventListener('click', () => {
     localStorage.setItem('ht_ts_theme', isDark ? 'dark' : 'light');
     btnThemeToggle.textContent = isDark ? '☀️ Light Mode' : '🌙 Dark Mode';
     
+    const tsCurvesSection = document.getElementById('tsCurvesSection');
+    if (tsCurvesSection) {
+        tsCurvesSection.style.borderColor = isDark ? '#444' : '#ccc';
+        document.getElementById('tsCurvesHeader').style.backgroundColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
+    }
+    
     if (window.tsChartInstance) {
         const textColor = isDark ? '#fff' : '#666';
+        const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+        
         window.tsChartInstance.options.plugins.title.color = textColor;
         window.tsChartInstance.options.plugins.legend.labels.color = textColor;
+        
         window.tsChartInstance.options.scales.x.title.color = textColor;
         window.tsChartInstance.options.scales.x.ticks.color = textColor;
+        if (!window.tsChartInstance.options.scales.x.grid) window.tsChartInstance.options.scales.x.grid = {};
+        window.tsChartInstance.options.scales.x.grid.color = gridColor;
+        
         window.tsChartInstance.options.scales.y.title.color = textColor;
         window.tsChartInstance.options.scales.y.ticks.color = textColor;
+        if (!window.tsChartInstance.options.scales.y.grid) window.tsChartInstance.options.scales.y.grid = {};
+        window.tsChartInstance.options.scales.y.grid.color = gridColor;
+        
         document.getElementById('tsChartContainer').style.background = isDark ? '#2d2d2d' : '#fff';
         window.tsChartInstance.update();
+    }
+
+    if (window.tsValueChartInstance) {
+        const textColor = isDark ? '#fff' : '#666';
+        const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+        window.tsValueChartInstance.options.plugins.title.color = textColor;
+        window.tsValueChartInstance.options.plugins.legend.labels.color = textColor;
+        window.tsValueChartInstance.options.scales.x.title.color = textColor;
+        window.tsValueChartInstance.options.scales.x.ticks.color = textColor;
+        if (!window.tsValueChartInstance.options.scales.x.grid) window.tsValueChartInstance.options.scales.x.grid = {};
+        window.tsValueChartInstance.options.scales.x.grid.color = gridColor;
+        window.tsValueChartInstance.options.scales.y.title.color = textColor;
+        window.tsValueChartInstance.options.scales.y.ticks.color = textColor;
+        if (!window.tsValueChartInstance.options.scales.y.grid) window.tsValueChartInstance.options.scales.y.grid = {};
+        window.tsValueChartInstance.options.scales.y.grid.color = gridColor;
+        document.getElementById('tsValueChartContainer').style.background = isDark ? '#2d2d2d' : '#fff';
+        window.tsValueChartInstance.update();
+    }
+
+    const tableContainer = document.getElementById('tsValueTableContainer');
+    if (tableContainer) {
+        tableContainer.style.borderColor = isDark ? '#444' : '#ccc';
+        const table = tableContainer.querySelector('table');
+        if (table) table.style.color = isDark ? '#fff' : '#666';
+        tableContainer.querySelectorAll('th, td').forEach(cell => cell.style.borderBottomColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)');
+        tableContainer.querySelectorAll('th').forEach(th => th.style.background = isDark ? '#2d2d2d' : '#f9f9f9');
     }
 });
