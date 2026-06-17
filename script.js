@@ -490,6 +490,11 @@ function renderUI() {
     });
 
     attachTableListeners();
+    
+    const tsCurvesContent = document.getElementById('tsCurvesContent');
+    if (tsCurvesContent && tsCurvesContent.style.display === 'block' && window.Chart) {
+        plotTSCurves();
+    }
 }
 
 function attachTableListeners() {
@@ -576,46 +581,46 @@ domEls.reset.addEventListener('click', () => {
 
 
 function plotTSCurves() {
-    let container = document.getElementById('tsChartContainer');
+    const content = document.getElementById('tsCurvesContent');   
     const isDark = document.body.classList.contains('dark-mode');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'tsChartContainer';
-        container.style.cssText = `border-radius: 8px; background: ${isDark ? '#2d2d2d' : '#fff'};`;
         
-        const canvas = document.createElement('canvas');
-        canvas.id = 'tsChart';
-        container.appendChild(canvas);
-        
-        document.getElementById('tsCurvesContent').appendChild(container);
-    }
+    if (!content) return;
+    content.innerHTML = '';
     
-    let valContainer = document.getElementById('tsValueChartContainer');
-    if (!valContainer) {
-        valContainer = document.createElement('div');
-        valContainer.id = 'tsValueChartContainer';
-        valContainer.style.cssText = `border-radius: 8px; background: ${isDark ? '#2d2d2d' : '#fff'}; margin-top: 20px;`;
-        const canvas2 = document.createElement('canvas');
-        canvas2.id = 'tsValueChart';
-        valContainer.appendChild(canvas2);
-        document.getElementById('tsCurvesContent').appendChild(valContainer);
-    }
-    let tableContainer = document.getElementById('tsValueTableContainer');
-    if (!tableContainer) {
-        tableContainer = document.createElement('div');
-        tableContainer.id = 'tsValueTableContainer';
-        tableContainer.style.cssText = `margin-top: 20px; max-height: 400px; overflow-y: auto; border: 1px solid ${isDark ? '#444' : '#ccc'}; border-radius: 8px;`;
-        document.getElementById('tsCurvesContent').appendChild(tableContainer);
-    }
+    const changeChartContainer = document.createElement('div');
+    changeChartContainer.id = 'tsChartContainer';
+    changeChartContainer.style.cssText = `border-radius: 8px; background: ${isDark ? '#2d2d2d' : '#fff'}; padding: 10px; margin-bottom: 30px;`;
+    changeChartContainer.innerHTML = '<canvas id="tsChart"></canvas>';
+    content.appendChild(changeChartContainer);
 
-    const ctx = document.getElementById('tsChart').getContext('2d');
-    const sim = new TeamSpiritSimulator(7, 0, 'lokes');
+    const dropChartContainer = document.createElement('div');
+    dropChartContainer.id = 'tsDropChartContainer';
+    dropChartContainer.style.cssText = `border-radius: 8px; background: ${isDark ? '#2d2d2d' : '#fff'}; padding: 10px; margin-bottom: 10px;`;
+    dropChartContainer.innerHTML = '<canvas id="tsDropChart"></canvas>';
+    content.appendChild(dropChartContainer);
+
+    const dropTableContainer = document.createElement('div');
+    dropTableContainer.id = 'tsDropTableContainer';
+    dropTableContainer.style.cssText = `margin-bottom: 30px; max-height: 400px; overflow-y: auto; border: 1px solid ${isDark ? '#444' : '#ccc'}; border-radius: 8px;`;
+    content.appendChild(dropTableContainer);
+
+    const riseChartContainer = document.createElement('div');
+    riseChartContainer.id = 'tsRiseChartContainer';
+    riseChartContainer.style.cssText = `border-radius: 8px; background: ${isDark ? '#2d2d2d' : '#fff'}; padding: 10px; margin-bottom: 10px;`;
+    riseChartContainer.innerHTML = '<canvas id="tsRiseChart"></canvas>';
+    content.appendChild(riseChartContainer);
+
+    const riseTableContainer = document.createElement('div');
+    riseTableContainer.id = 'tsRiseTableContainer';
+    riseTableContainer.style.cssText = `margin-bottom: 10px; max-height: 400px; overflow-y: auto; border: 1px solid ${isDark ? '#444' : '#ccc'}; border-radius: 8px;`;
+    content.appendChild(riseTableContainer);
+
+    const textColor = isDark ? '#fff' : '#666';
+    const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+
+    const sim = new TeamSpiritSimulator(7, Number(app.settings.psychologistLevel), app.settings.decayMethod);
+    const baseline = sim.getTargetSpirit();
     
-    const labels = [
-        '0-1', '1-2', '2-3', '3-4', '4-4.5 (Rise)', 
-        '4.5-5 (Drop)', '5-6', '6-7', '7-8', '8-9', '9-10'
-    ];
-    const datasets = [];
     const colors = {
         7: '#4CAF50', 6: '#8BC34A', 5: '#FFEB3B', 
         4: '#FFC107', 3: '#FF9800', 2: '#FF5722', 1: '#F44336'
@@ -624,18 +629,32 @@ function plotTSCurves() {
         7: 'Solid', 6: 'Passable', 5: 'Inadequate', 4: 'Weak',
         3: 'Poor', 2: 'Wretched', 1: 'Disastrous'
     };
-
-    const maxUpdates = 112; // Approx 1 season (16 weeks * 7 updates)
-    const labels2 = Array.from({length: maxUpdates + 1}, (_, i) => i);
-    const datasets2 = [];
-    const tableData = [];
+   
+    const maxUpdates = 112;
+    const labels = Array.from({length: maxUpdates + 1}, (_, i) => i);
+    
+    const changeLabels = [
+        '0-1', '1-2', '2-3', '3-4', '4-4.5 (Rise)', 
+        '4.5-5 (Drop)', '5-6', '6-7', '7-8', '8-9', '9-10'
+    ];
+    const changeDatasets = [];
+    
+    const dropDatasets = [];
+    const riseDatasets = [];
+    
+    const dropTableData = [];
+    const riseTableData = [];
     
     for (let i = 0; i <= maxUpdates; i++) {
-        tableData.push({ update: i, drop: {}, rise: {} });
+        dropTableData.push({ update: i, values: {} });
+        riseTableData.push({ update: i, values: {} });
     }
 
+    const hasReachedDrop = {};
+    const hasReachedRise = {};
+
     for (let l = 7; l >= 1; l--) {
-        const data = [
+        const changeData = [
             sim.riseRates[l][0], sim.riseRates[l][1],
             sim.riseRates[l][2], sim.riseRates[l][3],
             sim.riseRates[l][4], -(sim.dropRates[l][4]),
@@ -643,49 +662,65 @@ function plotTSCurves() {
             -(sim.dropRates[l][7]), -(sim.dropRates[l][8]),
             -(sim.dropRates[l][9])
         ];
-        datasets.push({
+        changeDatasets.push({
             label: `Ld. ${l} (${leadershipLabels[l]})`,
-            data: data, borderColor: colors[l],
-            backgroundColor: colors[l], fill: false, tension: 0.1
+            data: changeData, borderColor: colors[l], backgroundColor: colors[l], fill: false, tension: 0.1
         });
         
         sim.coachLeadership = l;
         let currentDrop = 10.0;
         let currentRise = 0.0;
-        const dropData = [];
-        const riseData = [];
+
+        hasReachedDrop[l] = false;
+        hasReachedRise[l] = false;
+
+        const dropPoints = [];
+        const risePoints = [];
         
         for (let i = 0; i <= maxUpdates; i++) {
-            dropData.push(currentDrop);
-            riseData.push(currentRise);
+            dropPoints.push(currentDrop);
+            risePoints.push(currentRise);
             
-            tableData[i].drop[l] = currentDrop.toFixed(2);
-            tableData[i].rise[l] = currentRise.toFixed(2);
+            if (!hasReachedDrop[l]) {
+                dropTableData[i].values[l] = currentDrop.toFixed(2);
+                if (Math.abs(currentDrop - baseline) < 0.001) hasReachedDrop[l] = true;
+            } else {
+                dropTableData[i].values[l] = '';
+            }
+            
+            if (!hasReachedRise[l]) {
+                riseTableData[i].values[l] = currentRise.toFixed(2);
+                if (Math.abs(currentRise - baseline) < 0.001) hasReachedRise[l] = true;
+            } else {
+                riseTableData[i].values[l] = '';
+            }
             
             currentDrop = sim.applyDailyUpdate(currentDrop);
             currentRise = sim.applyDailyUpdate(currentRise);
         }
         
-        datasets2.push({
-            label: `Ld. ${l} Drop`, data: dropData, borderColor: colors[l],
-            backgroundColor: colors[l], fill: false, tension: 0.1, borderDash: []
+        dropDatasets.push({
+            label: `Ld. ${l} (${leadershipLabels[l]})`,
+            data: dropPoints, borderColor: colors[l], backgroundColor: colors[l], fill: false, tension: 0.1
         });
-        datasets2.push({
-            label: `Ld. ${l} Rise`, data: riseData, borderColor: colors[l],
-            backgroundColor: colors[l], fill: false, tension: 0.1, borderDash: [5, 5]
+        riseDatasets.push({
+            label: `Ld. ${l} (${leadershipLabels[l]})`,
+            data: risePoints, borderColor: colors[l], backgroundColor: colors[l], fill: false, tension: 0.1
         });
     }
 
-    if (window.tsChartInstance) {
-        window.tsChartInstance.destroy();
-    }
+    // Trim empty trailing rows
+    const maxDropRow = dropTableData.findIndex(row => Object.values(row.values).every(val => val === ''));
+    const finalDropData = maxDropRow !== -1 ? dropTableData.slice(0, maxDropRow) : dropTableData;
+    
+    const maxRiseRow = riseTableData.findIndex(row => Object.values(row.values).every(val => val === ''));
+    const finalRiseData = maxRiseRow !== -1 ? riseTableData.slice(0, maxRiseRow) : riseTableData;
 
-    const textColor = isDark ? '#fff' : '#666';
-    const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
-
-    window.tsChartInstance = new Chart(ctx, {
+    // Render Change Chart
+    if (window.tsChartInstance) window.tsChartInstance.destroy();
+    window.tsChartInstance = new Chart(document.getElementById('tsChart').getContext('2d'), {
         type: 'line',
-        data: { labels: labels, datasets: datasets },
+        data: { labels: changeLabels, datasets: changeDatasets },
         options: {
             responsive: true,
             plugins: {
@@ -694,62 +729,75 @@ function plotTSCurves() {
                 tooltip: { callbacks: { label: context => `${context.dataset.label}: ${context.parsed.y > 0 ? '+' : ''}${Number(context.parsed.y).toFixed(3)}` } }
             },
             scales: {
-                x: { 
-                    title: { display: true, text: 'Team Spirit Bucket', color: textColor }, 
-                    ticks: { color: textColor },
-                    grid: { color: gridColor }
-                },
-                y: { 
-                    title: { display: true, text: 'TS Change per Update', color: textColor }, 
-                    ticks: { color: textColor },
-                    grid: { color: gridColor }
-                }
+                x: { title: { display: true, text: 'Team Spirit Bucket', color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } },
+                y: { title: { display: true, text: 'Daily TS Change', color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } }
             }
         }
     });
 
-    const ctx2 = document.getElementById('tsValueChart').getContext('2d');
-    if (window.tsValueChartInstance) window.tsValueChartInstance.destroy();
-    
-    window.tsValueChartInstance = new Chart(ctx2, {
+    // Render Drop Chart
+    if (window.tsDropChartInstance) window.tsDropChartInstance.destroy();
+    window.tsDropChartInstance = new Chart(document.getElementById('tsDropChart').getContext('2d'), {
         type: 'line',
-        data: { labels: labels2, datasets: datasets2 },
+        data: { labels: labels, datasets: dropDatasets },
         options: {
             responsive: true,
             plugins: {
-                title: { display: true, text: 'Actual TS Value over Update Events (1 Season = ~112 Updates)', color: textColor },
+                title: { display: true, text: `TS Decay from 10.0 to Baseline (~${baseline.toFixed(2)})`, color: textColor },
                 legend: { labels: { color: textColor } },
                 tooltip: { callbacks: { label: context => `${context.dataset.label}: ${Number(context.parsed.y).toFixed(2)}` } }
             },
             scales: {
                 x: { 
                     title: { display: true, text: 'Updates', color: textColor }, 
-                    ticks: { color: textColor }, grid: { color: gridColor }
+                    ticks: { color: textColor },
+                    grid: { color: gridColor }
                 },
                 y: { 
                     title: { display: true, text: 'TS Value', color: textColor }, 
-                    ticks: { color: textColor }, grid: { color: gridColor }
+                    ticks: { color: textColor },
+                    grid: { color: gridColor },
+                    min: 4.0
                 }
             }
         }
     });
 
-    let tableHtml = `<table style="width: 100%; border-collapse: collapse; text-align: center; color: ${textColor}; font-size: 0.85em;">`;
-    tableHtml += `<thead><tr><th style="border-bottom: 1px solid ${gridColor}; padding: 4px; position: sticky; top: 0; background: ${isDark ? '#2d2d2d' : '#f9f9f9'}; z-index: 1;">Update</th>`;
-    for (let l = 7; l >= 1; l--) tableHtml += `<th style="border-bottom: 1px solid ${gridColor}; padding: 4px; position: sticky; top: 0; background: ${isDark ? '#2d2d2d' : '#f9f9f9'}; color: ${colors[l]}; z-index: 1;">Ld.${l} Drop</th>`;
-    for (let l = 7; l >= 1; l--) tableHtml += `<th style="border-bottom: 1px solid ${gridColor}; padding: 4px; position: sticky; top: 0; background: ${isDark ? '#2d2d2d' : '#f9f9f9'}; color: ${colors[l]}; z-index: 1;">Ld.${l} Rise</th>`;
-    tableHtml += `</tr></thead><tbody>`;
-    
-    tableData.forEach(row => {
-        tableHtml += `<tr><td style="border-bottom: 1px solid ${gridColor}; padding: 4px;"><strong>${row.update}</strong></td>`;
-        for (let l = 7; l >= 1; l--) tableHtml += `<td style="border-bottom: 1px solid ${gridColor}; padding: 4px;">${row.drop[l]}</td>`;
-        for (let l = 7; l >= 1; l--) tableHtml += `<td style="border-bottom: 1px solid ${gridColor}; padding: 4px;">${row.rise[l]}</td>`;
-        tableHtml += `</tr>`;
+    // Render Rise Chart
+    if (window.tsRiseChartInstance) window.tsRiseChartInstance.destroy();
+    window.tsRiseChartInstance = new Chart(document.getElementById('tsRiseChart').getContext('2d'), {
+        type: 'line',
+        data: { labels: labels, datasets: riseDatasets },
+        options: {
+            responsive: true,
+            plugins: {
+                title: { display: true, text: `TS Rise from 0.0 to Baseline (~${baseline.toFixed(2)})`, color: textColor },
+                legend: { labels: { color: textColor } },
+                tooltip: { callbacks: { label: context => `${context.dataset.label}: ${Number(context.parsed.y).toFixed(2)}` } }
+            },
+            scales: {
+                x: { title: { display: true, text: 'Updates', color: textColor }, ticks: { color: textColor }, grid: { color: gridColor } },
+                y: { title: { display: true, text: 'TS Value', color: textColor }, ticks: { color: textColor }, grid: { color: gridColor }, max: 5.0 }
+            }
+        }
     });
-    tableHtml += `</tbody></table>`;
-    
-    const tableContainerEl = document.getElementById('tsValueTableContainer');
-    if(tableContainerEl) tableContainerEl.innerHTML = tableHtml;
+
+    function renderTable(data, title) {
+        let html = `<table style="width: 100%; border-collapse: collapse; text-align: center; color: ${textColor}; font-size: 0.85em;">`;
+        html += `<thead><tr><th style="border-bottom: 1px solid ${gridColor}; padding: 4px; position: sticky; top: 0; background: ${isDark ? '#2d2d2d' : '#f9f9f9'}; z-index: 1;">Update</th>`;
+        for (let l = 7; l >= 1; l--) html += `<th style="border-bottom: 1px solid ${gridColor}; padding: 4px; position: sticky; top: 0; background: ${isDark ? '#2d2d2d' : '#f9f9f9'}; color: ${colors[l]}; z-index: 1;">Ld.${l} ${title}</th>`;
+        html += `</tr></thead><tbody>`;
+        data.forEach(row => {
+            html += `<tr><td style="border-bottom: 1px solid ${gridColor}; padding: 4px;"><strong>${row.update}</strong></td>`;
+            for (let l = 7; l >= 1; l--) html += `<td style="border-bottom: 1px solid ${gridColor}; padding: 4px;">${row.values[l]}</td>`;
+            html += `</tr>`;
+        });
+        html += `</tbody></table>`;
+        return html;
+    }
+
+    document.getElementById('tsDropTableContainer').innerHTML = renderTable(finalDropData, 'Drop');
+    document.getElementById('tsRiseTableContainer').innerHTML = renderTable(finalRiseData, 'Rise');
 }
 
 renderUI();
@@ -776,50 +824,38 @@ btnThemeToggle.addEventListener('click', () => {
         document.getElementById('tsCurvesHeader').style.backgroundColor = isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)';
     }
     
-    if (window.tsChartInstance) {
-        const textColor = isDark ? '#fff' : '#666';
-        const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
-        
-        window.tsChartInstance.options.plugins.title.color = textColor;
-        window.tsChartInstance.options.plugins.legend.labels.color = textColor;
-        
-        window.tsChartInstance.options.scales.x.title.color = textColor;
-        window.tsChartInstance.options.scales.x.ticks.color = textColor;
-        if (!window.tsChartInstance.options.scales.x.grid) window.tsChartInstance.options.scales.x.grid = {};
-        window.tsChartInstance.options.scales.x.grid.color = gridColor;
-        
-        window.tsChartInstance.options.scales.y.title.color = textColor;
-        window.tsChartInstance.options.scales.y.ticks.color = textColor;
-        if (!window.tsChartInstance.options.scales.y.grid) window.tsChartInstance.options.scales.y.grid = {};
-        window.tsChartInstance.options.scales.y.grid.color = gridColor;
-        
-        document.getElementById('tsChartContainer').style.background = isDark ? '#2d2d2d' : '#fff';
-        window.tsChartInstance.update();
-    }
+    const textColor = isDark ? '#fff' : '#666';
+    const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
 
-    if (window.tsValueChartInstance) {
-        const textColor = isDark ? '#fff' : '#666';
-        const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
-        window.tsValueChartInstance.options.plugins.title.color = textColor;
-        window.tsValueChartInstance.options.plugins.legend.labels.color = textColor;
-        window.tsValueChartInstance.options.scales.x.title.color = textColor;
-        window.tsValueChartInstance.options.scales.x.ticks.color = textColor;
-        if (!window.tsValueChartInstance.options.scales.x.grid) window.tsValueChartInstance.options.scales.x.grid = {};
-        window.tsValueChartInstance.options.scales.x.grid.color = gridColor;
-        window.tsValueChartInstance.options.scales.y.title.color = textColor;
-        window.tsValueChartInstance.options.scales.y.ticks.color = textColor;
-        if (!window.tsValueChartInstance.options.scales.y.grid) window.tsValueChartInstance.options.scales.y.grid = {};
-        window.tsValueChartInstance.options.scales.y.grid.color = gridColor;
-        document.getElementById('tsValueChartContainer').style.background = isDark ? '#2d2d2d' : '#fff';
-        window.tsValueChartInstance.update();
-    }
+    [window.tsChartInstance, window.tsDropChartInstance, window.tsRiseChartInstance].forEach(chart => {
+        if (chart) {
+            chart.options.plugins.title.color = textColor;
+            chart.options.plugins.legend.labels.color = textColor;
+            chart.options.scales.x.title.color = textColor;
+            chart.options.scales.x.ticks.color = textColor;
+            if (!chart.options.scales.x.grid) chart.options.scales.x.grid = {};
+            chart.options.scales.x.grid.color = gridColor;
+            chart.options.scales.y.title.color = textColor;
+            chart.options.scales.y.ticks.color = textColor;
+            if (!chart.options.scales.y.grid) chart.options.scales.y.grid = {};
+            chart.options.scales.y.grid.color = gridColor;
+            chart.update();
+        }
+    });
 
-    const tableContainer = document.getElementById('tsValueTableContainer');
-    if (tableContainer) {
-        tableContainer.style.borderColor = isDark ? '#444' : '#ccc';
-        const table = tableContainer.querySelector('table');
-        if (table) table.style.color = isDark ? '#fff' : '#666';
-        tableContainer.querySelectorAll('th, td').forEach(cell => cell.style.borderBottomColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)');
-        tableContainer.querySelectorAll('th').forEach(th => th.style.background = isDark ? '#2d2d2d' : '#f9f9f9');
-    }
+    ['tsChartContainer', 'tsDropChartContainer', 'tsRiseChartContainer'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.background = isDark ? '#2d2d2d' : '#fff';
+    });
+
+    ['tsDropTableContainer', 'tsRiseTableContainer'].forEach(id => {
+        const container = document.getElementById(id);
+        if (container) {
+            container.style.borderColor = isDark ? '#444' : '#ccc';
+            const table = container.querySelector('table');
+            if (table) table.style.color = isDark ? '#fff' : '#666';
+            container.querySelectorAll('th, td').forEach(cell => cell.style.borderBottomColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)');
+            container.querySelectorAll('th').forEach(th => th.style.background = isDark ? '#2d2d2d' : '#f9f9f9');
+        }
+    });
 });
